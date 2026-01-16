@@ -11,3 +11,9 @@ The warehouse can list the item and sell it to multiple retailer
 ## Upcoming
 - retailer
 - customer
+
+
+## what's done
+
+in this i added the retailer part where it works on its own
+and to comunicate with the warehouse i added the resttemplate
