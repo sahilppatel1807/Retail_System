@@ -5,12 +5,13 @@ import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.inventory.retailer.dto.PurchaseRequest;
 import com.inventory.retailer.entity.Purchase;
+import com.inventory.retailer.entity.Sale;
 import com.inventory.retailer.service.RetailerService;
 
 @RestController
@@ -27,12 +28,21 @@ public class PurchaseController {
     }
 
     @GetMapping("/all")
-    public List<Purchase> getAllItems(){
+    public List<Purchase> getAllItems() {
         return service.getAllItems();
     }
 
-     @GetMapping("/{id}")
+    @GetMapping("/{id}")
     public Purchase getItem(@PathVariable Long id) {
         return service.findItem(id);
     }
+
+    @PostMapping("/orders")
+    public Sale placeOrder(
+            @RequestParam Long productId,
+            @RequestParam int quantity,
+            @RequestParam String customerName) {
+        return service.placeOrder(productId, quantity, customerName);
+    }
+
 }
