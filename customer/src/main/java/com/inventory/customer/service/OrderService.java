@@ -1,6 +1,7 @@
 package com.inventory.customer.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
@@ -26,7 +27,7 @@ public class OrderService {
 
         Order order = new Order();
         order.setProductId(productId);
-        order.setProductName((String) product.get("name"));
+        order.setProductName((String) product.get("productName"));
         order.setPrice(((Number) product.get("price")).doubleValue());
         order.setQuantity(quantity);
         order.setCustomerName(customerName);
@@ -35,6 +36,18 @@ public class OrderService {
         retailerClient.placeOrder(productId, quantity, customerName);
 
         return repository.save(order);
+    }
+
+    public List<Map<String, Object>> getRetailerProducts() {
+        return retailerClient.getAllProducts();
+    }
+
+    public List<Order> getAllOrders(){
+        return repository.findAll();
+    }
+
+    public Order getOrderById(Long id){
+        return repository.findById(id).orElseThrow(()-> new RuntimeException("no order found") );
     }
     
 

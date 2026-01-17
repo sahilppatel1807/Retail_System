@@ -14,7 +14,7 @@ import com.inventory.warehouse.entity.Item;
 import com.inventory.warehouse.service.ItemService;
 
 @RestController
-@RequestMapping("/items")
+@RequestMapping("/api/warehouse")
 public class ItemController {
     private final ItemService service;
 

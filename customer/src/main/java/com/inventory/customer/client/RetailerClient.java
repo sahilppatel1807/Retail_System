@@ -1,5 +1,6 @@
 package com.inventory.customer.client;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Component;
@@ -11,13 +12,21 @@ public class RetailerClient {
 
     public Map<String, Object> getProduct(Long id){
         return restTemplate.getForObject(
-            "http://localhost:8082/" + id,
+            "http://localhost:8082/api/retailer/" + id,
             Map.class
         );
     }
 
+    public List<Map<String, Object>> getAllProducts() {
+        return restTemplate.getForObject(
+            "http://localhost:8082/api/retailer/all",
+            List.class
+        );
+    }
+
+
     public void placeOrder(Long productId, int quantity, String customerName){
-        restTemplate.postForObject("http://localhost:8082/orders" +
+        restTemplate.postForObject("http://localhost:8082/api/retailer/orders" +
             "?productId=" + productId +
             "&quantity=" + quantity +
             "&customerName=" + customerName,

@@ -4,7 +4,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import com.inventory.retailer.client.WarehouseClient;
 import com.inventory.retailer.dto.ItemResponse;
 import com.inventory.retailer.entity.Purchase;
@@ -17,11 +16,9 @@ public class RetailerService {
 
     private final WarehouseClient warehouseClient;
     private final SaleRepository saleRepository;
-    private final RestTemplate restTemplate;
     private final PurchaseRepository repository;
 
-    public RetailerService(RestTemplate restTemplate, PurchaseRepository repository, WarehouseClient warehouseClient, SaleRepository sellRepository) {
-        this.restTemplate = restTemplate;
+    public RetailerService(PurchaseRepository repository, WarehouseClient warehouseClient, SaleRepository sellRepository) {
         this.repository = repository;
         this.warehouseClient = warehouseClient;
         this.saleRepository = sellRepository;
@@ -29,14 +26,8 @@ public class RetailerService {
 
     public Purchase buyFromWarehouse(Long itemId, int quantity) {
 
-        String url = "http://localhost:8081/items/buy"
-                + "?itemId=" + itemId
-                + "&quantity=" + quantity;
-
-        ItemResponse item = restTemplate.postForObject(
-                url,
-                null,
-                ItemResponse.class);
+        // Use WarehouseClient to call warehouse service
+        ItemResponse item = warehouseClient.buyFromWarehouse(itemId, quantity);
 
         Purchase retailerItem = new Purchase();
         retailerItem.setWarehouseItemId(item.getId());
