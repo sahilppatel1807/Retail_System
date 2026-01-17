@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: retail_postgres
+    environment:
+      POSTGRES_DB: retail_system
+      POSTGRES_USER: sahil
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sahil -d retail_system"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Warehouse Service
+  warehouse:
+    build: ./warehouse
+    container_name: retail_warehouse
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
+      SPRING_DATASOURCE_USERNAME: sahil
+      SPRING_DATASOURCE_PASSWORD: root
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  # Retailer Service
+  retailer:
+    build: ./retailer
+    container_name: retail_retailer
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
+      SPRING_DATASOURCE_USERNAME: sahil
+      SPRING_DATASOURCE_PASSWORD: root
+      WAREHOUSE_HOST: warehouse
+    depends_on:
+      postgres:
+        condition: service_healthy
+      warehouse:
+        condition: service_started
+    restart: on-failure
+
+  # Customer Service
+  customer:
+    build: ./customer
+    container_name: retail_customer
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
+      SPRING_DATASOURCE_USERNAME: sahil
+      SPRING_DATASOURCE_PASSWORD: root
+      RETAILER_HOST: retailer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      retailer:
+        condition: service_started
+    restart: on-failure
+
+  # React Customer UI
+  customer-ui:
+    build: ./customer-ui
+    container_name: retail_ui
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8083
+    depends_on:
+      - customer
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:
+    driver: local

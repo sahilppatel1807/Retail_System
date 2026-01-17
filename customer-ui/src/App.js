@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 
+// Use environment variable for API URL, fallback to localhost
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8083";
+
 function App() {
   const [customerName, setCustomerName] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
@@ -10,7 +13,7 @@ function App() {
   useEffect(() => {
     if (!loggedIn) return;
 
-    fetch("http://localhost:8083/api/customer/products")
+    fetch(`${API_BASE_URL}/api/customer/products`)
       .then(res => res.json())
       .then(data => setProducts(data))
       .catch(() => alert("Failed to load products"));
@@ -27,7 +30,7 @@ function App() {
   const buyProduct = (productId) => {
     const qty = quantities[productId] || 1;
     fetch(
-      `http://localhost:8083/api/customer/orders?productId=${productId}&quantity=${qty}&customerName=${customerName}`,
+      `${API_BASE_URL}/api/customer/orders?productId=${productId}&quantity=${qty}&customerName=${customerName}`,
       { method: "POST" }
     )
       .then(res => res.json())

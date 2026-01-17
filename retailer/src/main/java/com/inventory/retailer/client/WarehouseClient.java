@@ -1,5 +1,6 @@
 package com.inventory.retailer.client;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -9,6 +10,9 @@ import com.inventory.retailer.dto.ItemResponse;
 public class WarehouseClient {
 
     private final RestTemplate restTemplate = new RestTemplate();
+    
+    @Value("${warehouse.host:localhost}")
+    private String warehouseHost;
 
     /**
      * Buy items from warehouse
@@ -17,7 +21,7 @@ public class WarehouseClient {
      * @return ItemResponse with item details
      */
     public ItemResponse buyFromWarehouse(Long itemId, int quantity) {
-        String url = "http://localhost:8081/api/warehouse/buy"
+        String url = "http://" + warehouseHost + ":8081/api/warehouse/buy"
                 + "?itemId=" + itemId
                 + "&quantity=" + quantity;
 
@@ -30,7 +34,7 @@ public class WarehouseClient {
      */
     public ItemResponse[] getAllItems() {
         return restTemplate.getForObject(
-            "http://localhost:8081/api/warehouse/all",
+            "http://" + warehouseHost + ":8081/api/warehouse/all",
             ItemResponse[].class
         );
     }
@@ -42,7 +46,7 @@ public class WarehouseClient {
      */
     public ItemResponse getItem(Long itemId) {
         return restTemplate.getForObject(
-            "http://localhost:8081/api/warehouse/" + itemId,
+            "http://" + warehouseHost + ":8081/api/warehouse/" + itemId,
             ItemResponse.class
         );
     }
