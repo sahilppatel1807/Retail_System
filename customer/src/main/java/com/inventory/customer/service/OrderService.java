@@ -2,11 +2,11 @@ package com.inventory.customer.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
 import com.inventory.customer.client.RetailerClient;
+import com.inventory.customer.dto.ProductResponse;
 import com.inventory.customer.entity.Order;
 import com.inventory.customer.repository.OrderRepository;
 
@@ -23,22 +23,26 @@ public class OrderService {
 
     public Order placeOrder(Long productId, int quantity, String customerName) {
 
-        Map<String, Object> product = retailerClient.getProduct(productId);
+        // Get product details from retailer
+        ProductResponse product = retailerClient.getProduct(productId);
 
+        // Create local order record
         Order order = new Order();
-        order.setProductId(productId);
-        order.setProductName((String) product.get("productName"));
-        order.setPrice(((Number) product.get("price")).doubleValue());
+        order.setProductId(product.getId());
+        order.setProductName(product.getProductName());
+        order.setPrice(product.getPrice());
         order.setQuantity(quantity);
         order.setCustomerName(customerName);
         order.setOrderTime(LocalDateTime.now());
 
+        // Place order with retailer
         retailerClient.placeOrder(productId, quantity, customerName);
 
+        // Save order locally
         return repository.save(order);
     }
 
-    public List<Map<String, Object>> getRetailerProducts() {
+    public List<ProductResponse> getRetailerProducts() {
         return retailerClient.getAllProducts();
     }
 

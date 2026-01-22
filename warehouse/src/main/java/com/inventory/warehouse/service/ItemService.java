@@ -19,8 +19,19 @@ public class ItemService {
     }
 
     public Item createItem(Item item) {
-        Item newItem = new Item(item.getProductName(), item.getPrice(), item.getStockOnHand());
-        return repository.save(newItem);
+        // Check if item with same product name already exists
+        return repository.findByProductName(item.getProductName())
+                .map(existingItem -> {
+                    // Item exists - merge quantities and update price
+                    existingItem.setStockOnHand(existingItem.getStockOnHand() + item.getStockOnHand());
+                    existingItem.setPrice(item.getPrice()); // Update to latest price
+                    return repository.save(existingItem);
+                })
+                .orElseGet(() -> {
+                    // Item doesn't exist - create new
+                    Item newItem = new Item(item.getProductName(), item.getPrice(), item.getStockOnHand());
+                    return repository.save(newItem);
+                });
     }
 
     public Item findItem(Long id) {
@@ -44,5 +55,16 @@ public class ItemService {
 
         item.setStockOnHand(item.getStockOnHand() - quantity);
         return repository.save(item);
+    }
+
+    public Item updateItem(Long id, Item updatedItem) {
+        Item existing = repository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Item not found with id: " + id));
+        
+        existing.setProductName(updatedItem.getProductName());
+        existing.setPrice(updatedItem.getPrice());
+        existing.setStockOnHand(updatedItem.getStockOnHand());
+        
+        return repository.save(existing);
     }
 }

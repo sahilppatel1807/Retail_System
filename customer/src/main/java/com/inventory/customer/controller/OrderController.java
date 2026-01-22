@@ -1,16 +1,17 @@
 package com.inventory.customer.controller;
 
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.inventory.customer.dto.OrderRequest;
+import com.inventory.customer.dto.ProductResponse;
 import com.inventory.customer.entity.Order;
 import com.inventory.customer.service.OrderService;
 
@@ -25,16 +26,13 @@ public class OrderController {
     }
 
     @PostMapping("/orders")
-    public Order placeOrder(
-        @RequestParam Long productId,
-        @RequestParam int quantity,
-        @RequestParam String customerName
+    public Order placeOrder(@RequestBody OrderRequest request
     ) {
-        return service.placeOrder(productId, quantity, customerName);
+        return service.placeOrder(request.getProductId(), request.getQuantity(), request.getCustomerName());
     }
 
     @GetMapping("/products")
-    public List<Map<String, Object>> getRetailerProducts() {
+    public List<ProductResponse> getRetailerProducts() {
         return service.getRetailerProducts();
     }
 
@@ -48,3 +46,4 @@ public class OrderController {
         return service.getOrderById(id);
     }
 }
+

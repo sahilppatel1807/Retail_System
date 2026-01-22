@@ -29,13 +29,23 @@ public class RetailerService {
         // Use WarehouseClient to call warehouse service
         ItemResponse item = warehouseClient.buyFromWarehouse(itemId, quantity);
 
-        Purchase retailerItem = new Purchase();
-        retailerItem.setWarehouseItemId(item.getId());
-        retailerItem.setProductName(item.getProductName());
-        retailerItem.setPrice(item.getPrice());
-        retailerItem.setQuantity(quantity);
-
-        return repository.save(retailerItem);
+        // Check if this product already exists in retailer inventory
+        return repository.findByProductName(item.getProductName())
+                .map(existingPurchase -> {
+                    // Product exists - merge quantities and update price
+                    existingPurchase.setQuantity(existingPurchase.getQuantity() + quantity);
+                    existingPurchase.setPrice(item.getPrice()); // Update to latest price
+                    return repository.save(existingPurchase);
+                })
+                .orElseGet(() -> {
+                    // Product doesn't exist - create new
+                    Purchase retailerItem = new Purchase();
+                    retailerItem.setWarehouseItemId(item.getId());
+                    retailerItem.setProductName(item.getProductName());
+                    retailerItem.setPrice(item.getPrice());
+                    retailerItem.setQuantity(quantity);
+                    return repository.save(retailerItem);
+                });
     }
 
     public List<Purchase> getAllItems() {
@@ -68,6 +78,18 @@ public class RetailerService {
         sale.setSoldAt(LocalDateTime.now());
 
         return saleRepository.save(sale);
+    }
+
+    public Purchase updatePurchase(Long id, Purchase updatedPurchase) {
+        Purchase existing = repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Purchase not found with id: " + id));
+        
+        existing.setWarehouseItemId(updatedPurchase.getWarehouseItemId());
+        existing.setProductName(updatedPurchase.getProductName());
+        existing.setPrice(updatedPurchase.getPrice());
+        existing.setQuantity(updatedPurchase.getQuantity());
+        
+        return repository.save(existing);
     }
 
 }

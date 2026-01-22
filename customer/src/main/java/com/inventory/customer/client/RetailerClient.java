@@ -1,11 +1,13 @@
 package com.inventory.customer.client;
 
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+
+import com.inventory.customer.dto.OrderResponse;
+import com.inventory.customer.dto.ProductResponse;
 
 @Component
 public class RetailerClient {
@@ -14,14 +16,14 @@ public class RetailerClient {
     @Value("${retailer.host:localhost}")
     private String retailerHost;
 
-    public Map<String, Object> getProduct(Long id){
+    public ProductResponse getProduct(Long id){
         return restTemplate.getForObject(
             "http://" + retailerHost + ":8082/api/retailer/" + id,
-            Map.class
+            ProductResponse.class
         );
     }
 
-    public List<Map<String, Object>> getAllProducts() {
+    public List<ProductResponse> getAllProducts() {
         return restTemplate.getForObject(
             "http://" + retailerHost + ":8082/api/retailer/all",
             List.class
@@ -29,14 +31,15 @@ public class RetailerClient {
     }
 
 
-    public void placeOrder(Long productId, int quantity, String customerName){
-        restTemplate.postForObject("http://" + retailerHost + ":8082/api/retailer/orders" +
+    public OrderResponse placeOrder(Long productId, int quantity, String customerName){
+        return restTemplate.postForObject("http://" + retailerHost + ":8082/api/retailer/orders" +
             "?productId=" + productId +
             "&quantity=" + quantity +
             "&customerName=" + customerName,
             null,
-            Void.class
+            OrderResponse.class
         );
     }
 
 }
+

@@ -30,8 +30,18 @@ function App() {
   const buyProduct = (productId) => {
     const qty = quantities[productId] || 1;
     fetch(
-      `${API_BASE_URL}/api/customer/orders?productId=${productId}&quantity=${qty}&customerName=${customerName}`,
-      { method: "POST" }
+      `${API_BASE_URL}/api/customer/orders`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          productId: productId,
+          quantity: parseInt(qty),
+          customerName: customerName
+        })
+      }
     )
       .then(res => res.json())
       .then(() => {
