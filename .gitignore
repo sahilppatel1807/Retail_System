@@ -1,0 +1,48 @@
+# IDE and Editor
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+
+# Build outputs
+**/target/
+**/build/
+**/out/
+
+# Node modules
+**/node_modules/
+**/dist/
+
+# Environment files
+.env
+.env.local
+*.env
+
+# Logs
+*.log
+**/logs/
+
+# Docker volumes (optional - remove if you want to track)
+# postgres_data/
+
+# OS files
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Spring Boot specific
+**/.mvn/
+**/mvnw
+**/mvnw.cmd
+
+# Testing
+**/test-results/
+**/.coverage/
+
+# Temporary files
+*.tmp
+*.bak
+**/.cache/
