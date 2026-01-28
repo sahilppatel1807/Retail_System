@@ -40,9 +40,10 @@ public class ItemController {
 
     @PostMapping("/buy")
     public Item buyItem(
+            @RequestParam Long retailerId,
             @RequestParam Long itemId,
             @RequestParam int quantity) {
-        return service.sellItem(itemId, quantity);
+        return service.sellItem(retailerId, itemId, quantity);
     }
 
     @PutMapping("/{id}")

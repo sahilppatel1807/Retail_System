@@ -1,15 +1,10 @@
 package com.inventory.retailer.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.Data;
 
-@Getter
-@Setter
-@AllArgsConstructor
-@NoArgsConstructor
+@Data
 public class PurchaseRequest {
+    private Long warehouseId;  // Which warehouse to buy from
     private Long itemId;
     private int quantity;
 }

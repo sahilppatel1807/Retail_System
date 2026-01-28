@@ -1,10 +1,8 @@
 package com.inventory.retailer.dto;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
-@Getter
-@Setter
+@Data
 public class ItemResponse {
     private Long id;
     private String productName;

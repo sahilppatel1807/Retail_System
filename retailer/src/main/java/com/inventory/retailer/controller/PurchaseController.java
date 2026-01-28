@@ -27,7 +27,7 @@ public class PurchaseController {
 
     @PostMapping("/buy")
     public Purchase buy(@RequestBody PurchaseRequest request) {
-        return service.buyFromWarehouse(request.getItemId(), request.getQuantity());
+        return service.buyFromWarehouse(request.getWarehouseId(), request.getItemId(), request.getQuantity());
     }
 
     @GetMapping("/all")

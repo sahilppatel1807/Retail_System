@@ -2,6 +2,7 @@ package com.inventory.warehouse.service;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.inventory.warehouse.entity.Item;
@@ -14,11 +15,17 @@ import jakarta.transaction.Transactional;
 public class ItemService {
     private final ItemRepository repository;
 
+    @Value("${warehouse.id:0}")
+    private Long warehouseId;
+
     public ItemService(ItemRepository repository) {
         this.repository = repository;
     }
 
     public Item createItem(Item item) {
+        // Set warehouse ID
+        item.setWarehouseId(warehouseId);
+        
         // Check if item with same product name already exists
         return repository.findByProductName(item.getProductName())
                 .map(existingItem -> {
@@ -30,6 +37,7 @@ public class ItemService {
                 .orElseGet(() -> {
                     // Item doesn't exist - create new
                     Item newItem = new Item(item.getProductName(), item.getPrice(), item.getStockOnHand());
+                    newItem.setWarehouseId(warehouseId);
                     return repository.save(newItem);
                 });
     }
@@ -44,7 +52,7 @@ public class ItemService {
     }
 
     @Transactional
-    public Item sellItem(Long itemId, int quantity) {
+    public Item sellItem(Long retailerId, Long itemId, int quantity) {
 
         Item item = repository.findById(itemId)
                 .orElseThrow(() -> new RuntimeException("Item not found"));
@@ -52,7 +60,7 @@ public class ItemService {
         if (item.getStockOnHand() < quantity) {
             throw new RuntimeException("Insufficient stock");
         }
-
+        // generate the order id :
         item.setStockOnHand(item.getStockOnHand() - quantity);
         return repository.save(item);
     }

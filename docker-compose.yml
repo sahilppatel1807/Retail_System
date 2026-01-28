@@ -19,25 +19,61 @@ services:
       timeout: 5s
       retries: 5
 
-  # Warehouse Service
-  warehouse:
+  # Warehouse Service 1
+  warehouse1:
     build: ./warehouse
-    container_name: retail_warehouse
+    container_name: retail_warehouse1
     ports:
       - "8081:8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
       SPRING_DATASOURCE_USERNAME: sahil
       SPRING_DATASOURCE_PASSWORD: root
+      WAREHOUSE_ID: 1
+      SERVER_PORT: 8081
     depends_on:
       postgres:
         condition: service_healthy
     restart: on-failure
 
-  # Retailer Service
-  retailer:
+  # Warehouse Service 2
+  warehouse2:
+    build: ./warehouse
+    container_name: retail_warehouse2
+    ports:
+      - "8091:8091"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
+      SPRING_DATASOURCE_USERNAME: sahil
+      SPRING_DATASOURCE_PASSWORD: root
+      WAREHOUSE_ID: 2
+      SERVER_PORT: 8091
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  # Warehouse Service 3
+  warehouse3:
+    build: ./warehouse
+    container_name: retail_warehouse3
+    ports:
+      - "8101:8101"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
+      SPRING_DATASOURCE_USERNAME: sahil
+      SPRING_DATASOURCE_PASSWORD: root
+      WAREHOUSE_ID: 3
+      SERVER_PORT: 8101
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  # Retailer Service 1
+  retailer1:
     build: ./retailer
-    container_name: retail_retailer
+    container_name: retail_retailer1
     ports:
       - "8082:8082"
     environment:
@@ -45,10 +81,64 @@ services:
       SPRING_DATASOURCE_USERNAME: sahil
       SPRING_DATASOURCE_PASSWORD: root
       WAREHOUSE_HOST: warehouse
+      RETAILER_ID: 1
+      SERVER_PORT: 8082
     depends_on:
       postgres:
         condition: service_healthy
-      warehouse:
+      warehouse1:
+        condition: service_started
+      warehouse2:
+        condition: service_started
+      warehouse3:
+        condition: service_started
+    restart: on-failure
+
+  # Retailer Service 2
+  retailer2:
+    build: ./retailer
+    container_name: retail_retailer2
+    ports:
+      - "8092:8092"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
+      SPRING_DATASOURCE_USERNAME: sahil
+      SPRING_DATASOURCE_PASSWORD: root
+      WAREHOUSE_HOST: warehouse
+      RETAILER_ID: 2
+      SERVER_PORT: 8092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      warehouse1:
+        condition: service_started
+      warehouse2:
+        condition: service_started
+      warehouse3:
+        condition: service_started
+    restart: on-failure
+
+  # Retailer Service 3
+  retailer3:
+    build: ./retailer
+    container_name: retail_retailer3
+    ports:
+      - "8102:8102"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
+      SPRING_DATASOURCE_USERNAME: sahil
+      SPRING_DATASOURCE_PASSWORD: root
+      WAREHOUSE_HOST: warehouse
+      RETAILER_ID: 3
+      SERVER_PORT: 8102
+    depends_on:
+      postgres:
+        condition: service_healthy
+      warehouse1:
+        condition: service_started
+      warehouse2:
+        condition: service_started
+      warehouse3:
         condition: service_started
     restart: on-failure
 
@@ -62,11 +152,11 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retail_system
       SPRING_DATASOURCE_USERNAME: sahil
       SPRING_DATASOURCE_PASSWORD: root
-      RETAILER_HOST: retailer
+      RETAILER_HOST: retailer1
     depends_on:
       postgres:
         condition: service_healthy
-      retailer:
+      retailer1:
         condition: service_started
     restart: on-failure
 

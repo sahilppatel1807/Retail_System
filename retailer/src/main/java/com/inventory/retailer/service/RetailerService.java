@@ -3,6 +3,7 @@ package com.inventory.retailer.service;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.inventory.retailer.client.WarehouseClient;
 import com.inventory.retailer.dto.ItemResponse;
@@ -18,16 +19,19 @@ public class RetailerService {
     private final SaleRepository saleRepository;
     private final PurchaseRepository repository;
 
+    @Value("${retailer.id:0}")
+    private Long retailerId;
+
     public RetailerService(PurchaseRepository repository, WarehouseClient warehouseClient, SaleRepository sellRepository) {
         this.repository = repository;
         this.warehouseClient = warehouseClient;
         this.saleRepository = sellRepository;
     }
 
-    public Purchase buyFromWarehouse(Long itemId, int quantity) {
+    public Purchase buyFromWarehouse(Long warehouseId, Long itemId, int quantity) {
 
-        // Use WarehouseClient to call warehouse service
-        ItemResponse item = warehouseClient.buyFromWarehouse(itemId, quantity);
+        // Use WarehouseClient to call warehouse service with warehouseId
+        ItemResponse item = warehouseClient.buyFromWarehouse(warehouseId, retailerId, itemId, quantity);
 
         // Check if this product already exists in retailer inventory
         return repository.findByProductName(item.getProductName())
@@ -40,6 +44,8 @@ public class RetailerService {
                 .orElseGet(() -> {
                     // Product doesn't exist - create new
                     Purchase retailerItem = new Purchase();
+                    retailerItem.setRetailerId(retailerId);  // Set from environment
+                    retailerItem.setWarehouseId(warehouseId); // Track which warehouse
                     retailerItem.setWarehouseItemId(item.getId());
                     retailerItem.setProductName(item.getProductName());
                     retailerItem.setPrice(item.getPrice());
@@ -72,6 +78,7 @@ public class RetailerService {
 
         // create sale record
         Sale sale = new Sale();
+        sale.setRetailerId(retailerId);  // Set from environment
         sale.setProductId(productId);
         sale.setQuantity(quantity);
         sale.setCustomerName(customerName);

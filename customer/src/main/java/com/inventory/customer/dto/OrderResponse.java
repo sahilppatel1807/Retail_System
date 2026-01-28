@@ -1,15 +1,9 @@
 package com.inventory.customer.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.Data;
 import java.time.LocalDateTime;
 
-@Getter
-@Setter
-@AllArgsConstructor
-@NoArgsConstructor
+@Data
 public class OrderResponse {
     private Long id;
     private Long productId;

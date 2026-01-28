@@ -1,14 +1,8 @@
 package com.inventory.customer.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.Data;
 
-@Getter
-@Setter
-@AllArgsConstructor
-@NoArgsConstructor
+@Data
 public class ProductResponse {
     private Long id;
     private Long warehouseItemId;
