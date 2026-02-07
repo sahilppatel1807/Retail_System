@@ -1,8 +1,12 @@
-package com.inventory.retailer.dto;
+package com.inventory.warehouse_central.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ItemResponse {
     private Long id;
     private String productName;

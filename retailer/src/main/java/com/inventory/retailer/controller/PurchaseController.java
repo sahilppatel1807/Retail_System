@@ -27,17 +27,17 @@ public class PurchaseController {
 
     @PostMapping("/buy")
     public Purchase buy(@RequestBody PurchaseRequest request) {
-        return service.buyFromWarehouse(request.getWarehouseId(), request.getItemId(), request.getQuantity());
+        return service.buyFromWarehouse(request.getItemId(), request.getQuantity());
     }
 
-    @GetMapping("/all")
-    public List<Purchase> getAllItems() {
-        return service.getAllItems();
+    @GetMapping("/sales")
+    public List<Sale> getAllSales() {
+        return service.getAllSales();
     }
 
-    @GetMapping("/{id}")
-    public Purchase getItem(@PathVariable Long id) {
-        return service.findItem(id);
+    @GetMapping("/sales/{id}")
+    public Sale getSale(@PathVariable Long id) {
+        return service.getSale(id);
     }
 
     @PostMapping("/orders")
@@ -51,6 +51,16 @@ public class PurchaseController {
     @PutMapping("/{id}")
     public Purchase updatePurchase(@PathVariable Long id, @RequestBody Purchase purchase) {
         return service.updatePurchase(id, purchase);
+    }
+
+    @GetMapping("/all")
+    public List<Purchase> getAllItems() {
+        return service.getAllItems();
+    }
+
+    @GetMapping("/{id}")
+    public Purchase getItem(@PathVariable Long id) {
+        return service.findItem(id);
     }
 
 }
