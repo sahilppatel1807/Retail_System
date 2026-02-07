@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.inventory.warehouse.entity.Item;
+import com.inventory.warehouse.messaging.StockUpdateProducer;
 import com.inventory.warehouse.repository.ItemRepository;
 
 import jakarta.persistence.EntityNotFoundException;
@@ -14,31 +15,52 @@ import jakarta.transaction.Transactional;
 @Service
 public class ItemService {
     private final ItemRepository repository;
+    private final StockUpdateProducer stockUpdateProducer;
 
     @Value("${warehouse.id:0}")
     private Long warehouseId;
 
-    public ItemService(ItemRepository repository) {
+    public ItemService(ItemRepository repository, StockUpdateProducer stockUpdateProducer) {
         this.repository = repository;
+        this.stockUpdateProducer = stockUpdateProducer;
     }
 
     public Item createItem(Item item) {
-        // Set warehouse ID
         item.setWarehouseId(warehouseId);
         
-        // Check if item with same product name already exists
         return repository.findByProductName(item.getProductName())
                 .map(existingItem -> {
-                    // Item exists - merge quantities and update price
                     existingItem.setStockOnHand(existingItem.getStockOnHand() + item.getStockOnHand());
-                    existingItem.setPrice(item.getPrice()); // Update to latest price
-                    return repository.save(existingItem);
+                    existingItem.setPrice(item.getPrice());
+                    Item saved = repository.save(existingItem);
+                    
+                    // Send update to RabbitMQ
+                    stockUpdateProducer.sendStockUpdate(
+                        saved.getId(),
+                        saved.getProductName(),
+                        saved.getStockOnHand(),
+                        saved.getPrice()
+                    );
+                    
+                    return saved;
                 })
                 .orElseGet(() -> {
-                    // Item doesn't exist - create new
-                    Item newItem = new Item(item.getProductName(), item.getPrice(), item.getStockOnHand());
+                    Item newItem = new Item();
+                    newItem.setProductName(item.getProductName());
+                    newItem.setPrice(item.getPrice());
+                    newItem.setStockOnHand(item.getStockOnHand());
                     newItem.setWarehouseId(warehouseId);
-                    return repository.save(newItem);
+                    Item saved = repository.save(newItem);
+                    
+                    // Send update to RabbitMQ
+                    stockUpdateProducer.sendStockUpdate(
+                        saved.getId(),
+                        saved.getProductName(),
+                        saved.getStockOnHand(),
+                        saved.getPrice()
+                    );
+                    
+                    return saved;
                 });
     }
 
@@ -60,9 +82,23 @@ public class ItemService {
         if (item.getStockOnHand() < quantity) {
             throw new RuntimeException("Insufficient stock");
         }
-        // generate the order id :
+        
         item.setStockOnHand(item.getStockOnHand() - quantity);
-        return repository.save(item);
+        Item saved = repository.save(item);
+        
+        // Send stock update to RabbitMQ
+        stockUpdateProducer.sendStockUpdate(
+            saved.getId(),
+            saved.getProductName(),
+            saved.getStockOnHand(),
+            saved.getPrice()
+        );
+        
+        System.out.println("✅ [Warehouse-" + warehouseId + "] Sold " + quantity + 
+                          " units of " + saved.getProductName() + 
+                          ". Remaining stock: " + saved.getStockOnHand());
+        
+        return saved;
     }
 
     public Item updateItem(Long id, Item updatedItem) {
@@ -73,6 +109,16 @@ public class ItemService {
         existing.setPrice(updatedItem.getPrice());
         existing.setStockOnHand(updatedItem.getStockOnHand());
         
-        return repository.save(existing);
+        Item saved = repository.save(existing);
+        
+        // Send update to RabbitMQ
+        stockUpdateProducer.sendStockUpdate(
+            saved.getId(),
+            saved.getProductName(),
+            saved.getStockOnHand(),
+            saved.getPrice()
+        );
+        
+        return saved;
     }
 }

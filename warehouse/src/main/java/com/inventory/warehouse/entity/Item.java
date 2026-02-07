@@ -6,25 +6,23 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 
 @Entity
 @Table(name = "item")
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class Item {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private Long warehouseId;  // Which warehouse owns this item
+    private Long warehouseId;
     private String productName;
     private float price;
     private int stockOnHand;
-
-    public Item(String productName, float price, int stockOnHand){
-        this.productName = productName;
-        this.price = price;
-        this.stockOnHand = stockOnHand;
-    }
 }

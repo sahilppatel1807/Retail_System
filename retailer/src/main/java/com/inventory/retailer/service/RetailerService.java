@@ -28,10 +28,10 @@ public class RetailerService {
         this.saleRepository = sellRepository;
     }
 
-    public Purchase buyFromWarehouse(Long warehouseId, Long itemId, int quantity) {
+    public Purchase buyFromWarehouse(Long itemId, int quantity) {
 
-        // Use WarehouseClient to call warehouse service with warehouseId
-        ItemResponse item = warehouseClient.buyFromWarehouse(warehouseId, retailerId, itemId, quantity);
+        // Use WarehouseClient to call warehouse-central (it handles routing)
+        ItemResponse item = warehouseClient.buyFromWarehouse(retailerId, itemId, quantity);
 
         // Check if this product already exists in retailer inventory
         return repository.findByProductName(item.getProductName())
@@ -39,14 +39,15 @@ public class RetailerService {
                     // Product exists - merge quantities and update price
                     existingPurchase.setQuantity(existingPurchase.getQuantity() + quantity);
                     existingPurchase.setPrice(item.getPrice()); // Update to latest price
+                    existingPurchase.setWarehouseId(item.getWarehouseId()); // Update source warehouse
                     return repository.save(existingPurchase);
                 })
                 .orElseGet(() -> {
                     // Product doesn't exist - create new
                     Purchase retailerItem = new Purchase();
                     retailerItem.setRetailerId(retailerId);  // Set from environment
-                    retailerItem.setWarehouseId(warehouseId); // Track which warehouse
                     retailerItem.setWarehouseItemId(item.getId());
+                    retailerItem.setWarehouseId(item.getWarehouseId());
                     retailerItem.setProductName(item.getProductName());
                     retailerItem.setPrice(item.getPrice());
                     retailerItem.setQuantity(quantity);
@@ -97,6 +98,15 @@ public class RetailerService {
         existing.setQuantity(updatedPurchase.getQuantity());
         
         return repository.save(existing);
+    }
+
+    public List<Sale> getAllSales() {
+        return saleRepository.findAll();
+    }
+
+    public Sale getSale(Long id) {
+        return saleRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Sale not found with id: " + id));
     }
 
 }

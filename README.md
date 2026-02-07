@@ -9,84 +9,96 @@ A complete retail inventory management system demonstrating microservices archit
 - [Running the Application](#running-the-application)
 - [API Endpoints](#api-endpoints)
 - [Features](#features)
+- [Testing the Flow](#testing-the-complete-flow)
 ---
 
 ## 🎯 System Overview
 
-This is a three-tier microservices system that simulates a complete retail supply chain:
+This is a resilient, multi-instance microservices system that simulates a complex retail supply chain:
 
 ```
-Warehouse → Retailer → Customer
+Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer ↔ Customer UI
 ```
 
-- **Warehouse** manages inventory and supplies products to retailers
-- **Retailer** purchases from warehouse and sells to customers
-- **Customer** browses products and places orders
-- **Customer UI** provides a React-based frontend for customers
+- **Warehouse Instances**: Multiple warehouses managing local inventory
+- **Warehouse Central**: Intelligent router and cache that connects retailers to available warehouses
+- **Retailer Instances**: Multiple retailers purchasing from the central supply and selling to customers
+- **Customer Service**: Handles customer interactions and order history
+- **Customer UI**: React-based frontend for end-users
+- **RabbitMQ**: Message broker for real-time inventory synchronization
 
 ---
 
 ## 📦 Services
 
-### 1. Warehouse Service (Port 8081)
+### 1. Warehouse Services (Ports 8081, 8091, 8101)
 
-**Purpose**: Manages the main inventory warehouse
+**Purpose**: Distributed inventory management
 
 **Responsibilities**:
-- Store product inventory with stock levels
-- Sell products to retailers
-- Track warehouse stock depletion
+- Manage local stock with unique warehouse IDs (1, 2, 3)
+- Sell products to retailers via Warehouse Central
+- Broadcast stock changes via **RabbitMQ**
 - Auto-merge duplicate products by name
 
-**Technology**: Spring Boot, PostgreSQL, JPA/Hibernate
+**Technology**: Spring Boot, PostgreSQL, RabbitMQ, JPA/Hibernate
 
 **Directory**: `/warehouse`
 
 ---
 
-### 2. Retailer Service (Port 8082)
+### 2. Retailer Services (Ports 8082, 8092, 8102)
 
-**Purpose**: Acts as the middleman between warehouse and customers
+**Purpose**: Scalable retail layer between warehouses and customers
 
 **Responsibilities**:
-- Purchase products from warehouse
-- Maintain retailer inventory
-- Sell products to customers
-- Record sales transactions
-- Auto-merge duplicate purchases by name
+- Purchase from the most available warehouse via Warehouse Central
+- Maintain independent retailer inventory (Ids: 1, 2, 3)
+- Record sales transactions and customer orders
+- Auto-merge duplicate purchases
 
-**Technology**: Spring Boot, PostgreSQL, JPA/Hibernate, RestTemplate
+**Technology**: Spring Boot, PostgreSQL, RestTemplate, JPA/Hibernate
 
 **Directory**: `/retailer`
 
 ---
 
-### 3. Customer Service (Port 8083)
+### 3. Warehouse Central (Port 8090)
+
+**Purpose**: Intelligent routing and inventory caching layer
+
+**Responsibilities**:
+- Maintain a high-performance cache of all warehouse inventories
+- Listen to RabbitMQ for real-time stock updates from warehouses
+- Route retailer purchase requests to warehouses with sufficient stock
+- Provide fallback mechanisms if a warehouse is unreachable
+
+**Technology**: Spring Boot, RabbitMQ (Consumer), In-Memory Cache
+
+**Directory**: `/warehouse-central`
+
+---
+
+### 4. Customer Service (Port 8083)
 
 **Purpose**: Handles customer orders and interactions
 
 **Responsibilities**:
-- Display available products from retailer
+- Display available products from retailers
 - Accept and process customer orders
-- Store order history
-- Communicate with retailer service
+- Store order history and timestamps
 
-**Technology**: Spring Boot, PostgreSQL, JPA/Hibernate, RestTemplate
+**Technology**: Spring Boot, PostgreSQL, JPA/Hibernate
 
 **Directory**: `/customer`
 
 ---
 
-### 4. Customer UI (Port 3000)
+### 5. Customer UI (Port 3000)
 
-**Purpose**: Web interface for customers
+**Purpose**: Premium React web interface for customers
 
-**Responsibilities**:
-- User-friendly product browsing
-- Order placement interface
-- Real-time product availability
-
-**Technology**: React.js
+**Technology**: React.js, CSS3 (Glassmorphism, Animations)
 
 **Directory**: `/customer-ui`
 
@@ -96,31 +108,56 @@ Warehouse → Retailer → Customer
 
 ### Service Communication Flow
 
-```
-┌─────────────┐
-│  Warehouse  │ (Inventory Source)
-│   :8081     │
-└──────┬──────┘
-       │ Supplies
-       ▼
-┌─────────────┐
-│  Retailer   │ (Middleman)
-│   :8082     │
-└──────┬──────┘
-       │ Sells
-       ▼
-┌─────────────┐      ┌──────────────┐
-│  Customer   │◄─────│ Customer UI  │
-│   :8083     │      │   :3000      │
-└─────────────┘      └──────────────┘
+```text
+                                 ┌───────────────┐
+                                 │  Customer UI  │
+                                 │  (Port 3000)  │
+                                 └───────┬───────┘
+                                         │ REST
+                                         ▼
+                                 ┌───────────────┐
+                                 │  Customer Svc │
+                                 │  (Port 8083)  │
+                                 └───────┬───────┘
+                                         │ REST
+                   ┌─────────────────────┼─────────────────────┐
+                   ▼                     ▼                     ▼
+           ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+           │  Retailer 1   │     │  Retailer 2   │     │  Retailer 3   │
+           │  (Port 8082)  │     │  (Port 8092)  │     │  (Port 8102)  │
+           └───────┬───────┘     └───────┬───────┘     └───────┬───────┘
+                   │                     │                     │
+                   └───────────┐         │         ┌───────────┘
+                               ▼         ▼         ▼
+                       ┌────────────────────────────────┐
+                       │       Warehouse Central        │
+                       │     (Routing & Inventory)      │◀─────┐
+                       │          (Port 8090)           │      │
+                       └───────────────┬────────────────┘      │
+                                       │ REST                  │ AMQP
+                   ┌───────────────────┼───────────────────┐   │ (Stock)
+                   ▼                   ▼                   ▼   │
+           ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+           │  Warehouse 1  │   │  Warehouse 2  │   │  Warehouse 3  │
+           │  (Port 8081)  │   │  (Port 8091)  │   │  (Port 8101)  │
+           └───────┬───────┘   └───────┬───────┘   └───────┬───────┘
+                   │                   │                   │
+                   └──────────┐        │        ┌──────────┘
+                              ▼        ▼        ▼
+                      ┌─────────────────────────────────┐
+                      │            RabbitMQ             │
+                      │        (Message Broker)         │
+                      └─────────────────────────────────┘
+
+          (All Services) ─────▶ ┌───────────────┐
+                                │  PostgreSQL   │
+                                │  (Shared DB)  │
+                                └───────────────┘
 ```
 
-### Database
-
-All services share a single **PostgreSQL 16** database (`retail_system`) but use separate tables:
-- Warehouse: `item` table
-- Retailer: `retailer` and `sale` tables
-- Customer: `customer_service` table
+### Database & Messaging
+- **PostgreSQL 16**: Shared database engine with isolated service schemas
+- **RabbitMQ**: Event-driven architecture for inventory synchronization
 
 ---
 
@@ -141,11 +178,13 @@ docker-compose up --build -d
 ```
 
 This will start:
-- PostgreSQL database (port 5432)
-- Warehouse service (port 8081)
-- Retailer service (port 8082)
-- Customer service (port 8083)
-- React UI (port 3000)
+- PostgreSQL database (5432)
+- **RabbitMQ** (5672, 15672)
+- **Warehouse Central** (8090)
+- **3x Warehouse Instances** (8081, 8091, 8101)
+- **3x Retailer Instances** (8082, 8092, 8102)
+- Customer service (8083)
+- React UI (3000)
 
 ### Stop All Services
 
@@ -164,9 +203,10 @@ docker-compose down -v
 docker-compose logs -f
 
 # Specific service
-docker-compose logs -f warehouse
-docker-compose logs -f retailer
-docker-compose logs -f customer
+docker-compose logs -f warehouse-central
+docker-compose logs -f warehouse1
+docker-compose logs -f retailer1
+docker-compose logs -f rabbitmq
 ```
 
 ---
@@ -192,8 +232,8 @@ docker-compose logs -f customer
 #### Get Single Item
 **GET** `/api/warehouse/{id}`
 
-#### Sell Item (Manual)
-**POST** `/api/warehouse/buy?itemId={id}&quantity={qty}`
+#### Sell Item (Manual/Internal)
+**POST** `/api/warehouse/buy?retailerId={rid}&itemId={id}&quantity={qty}`
 
 #### Update Item
 **PUT** `/api/warehouse/{id}`
@@ -204,6 +244,24 @@ docker-compose logs -f customer
   "stockOnHand": 100
 }
 ```
+
+---
+
+### Warehouse Central (http://localhost:8090)
+
+#### Route Purchase
+**POST** `/api/warehouse-central/purchase`
+```json
+{
+  "productId": 1,
+  "quantity": 5,
+  "retailerId": 1
+}
+```
+*Note: Automatically finds and calls the warehouse with the highest stock.*
+
+#### View Inventory Cache
+**GET** `/api/warehouse-central/inventory`
 
 ---
 
@@ -266,25 +324,24 @@ docker-compose logs -f customer
 
 ## ✨ Features
 
-### Auto-Merge Functionality
-- **Warehouse**: Adding items with the same product name automatically merges stock quantities
-- **Retailer**: Buying the same product multiple times merges inventory
-- **Latest price always wins** when merging
+### Centralized Routing
+- **Warehouse Central** acts as a smart gateway
+- Automatically selects warehouses based on stock availability
+- Provides high availability and failure fallback
 
-### Stock Management
-- Real-time stock tracking across all services
-- Automatic deduction when products are sold
-- Prevents overselling with stock validation
+### Event-Driven Sync
+- Uses **RabbitMQ** for real-time stock synchronization
+- Decouples warehouses from the central routing layer
+- Ensures inventory cache is always up-to-date (milliseconds latency)
 
-### Order Tracking
-- Complete order history for customers
-- Timestamps for all transactions
-- Customer name association
+### Multi-Instance Scaling
+- Supports multiple Retailer and Warehouse instances out of the box
+- Configuration-driven scaling via `docker-compose.yml`
+- Resilient design: if one warehouse fails, others are automatically used
 
-### Microservices Communication
-- RESTful API communication between services
-- RestTemplate for HTTP calls
-- Independent service deployment
+### Auto-Merge Logic
+- Prevent duplicate product entries across the chain
+- Intelligent quantity merging on purchase/creation
 
 ---
 
@@ -332,12 +389,11 @@ Access the customer interface at: **http://localhost:3000**
 
 ## 🛠️ Technology Stack
 
-- **Backend**: Spring Boot 3.x, Java
-- **Frontend**: React.js
+- **Backend**: Spring Boot 3.x, Java 17+
+- **Frontend**: React.js (Modern ES6+)
+- **Messaging**: RabbitMQ 3.12+
 - **Database**: PostgreSQL 16
-- **ORM**: JPA/Hibernate
 - **Containerization**: Docker, Docker Compose
-- **HTTP Client**: RestTemplate
 
 ---
 
@@ -345,12 +401,13 @@ Access the customer interface at: **http://localhost:3000**
 
 ```
 retail_system/
-├── warehouse/          # Warehouse microservice
-├── retailer/           # Retailer microservice
-├── customer/           # Customer microservice
+├── warehouse/          # Warehouse microservice template
+├── warehouse-central/  # Routing and caching service
+├── retailer/           # Retailer microservice template
+├── customer/           # Customer service
 ├── customer-ui/        # React frontend
-├── docker-compose.yml  # Docker orchestration
-└── README.md          # This file
+├── docker-compose.yml  # Multi-service orchestration
+└── README.md          # Project documentation
 ```
 
 ---
@@ -366,9 +423,11 @@ All services connect to PostgreSQL using environment variables set in `docker-co
 > ⚠️ **Note**: The credentials in `docker-compose.yml` are for development only. Change them for production use.
 
 ### Service Discovery
-Services communicate using container hostnames:
-- Retailer → Warehouse: `http://warehouse:8081`
-- Customer → Retailer: `http://retailer:8082`
+Services communicate using internal Docker network aliases:
+- Retailer → Warehouse Central: `http://warehouse-central:8084`
+- Warehouse Central → Warehouse 1: `http://warehouse1:8081`
+- Customer → Retailer 1: `http://retailer1:8082`
+- All Services → RabbitMQ: `amqp://rabbitmq:5672`
 
 ---
 
