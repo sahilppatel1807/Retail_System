@@ -1,13 +1,16 @@
 package com.inventory.warehouse.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.inventory.warehouse.entity.Item;
+import com.inventory.warehouse.entity.WarehouseInventoryHistory;
 import com.inventory.warehouse.messaging.StockUpdateProducer;
 import com.inventory.warehouse.repository.ItemRepository;
+import com.inventory.warehouse.repository.WarehouseInventoryHistoryRepository;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
@@ -15,24 +18,48 @@ import jakarta.transaction.Transactional;
 @Service
 public class ItemService {
     private final ItemRepository repository;
+    private final WarehouseInventoryHistoryRepository historyRepository;
     private final StockUpdateProducer stockUpdateProducer;
 
-    @Value("${warehouse.id:0}")
+    @Value("${warehouse.id:1}")
     private Long warehouseId;
 
-    public ItemService(ItemRepository repository, StockUpdateProducer stockUpdateProducer) {
+    public ItemService(
+            ItemRepository repository, 
+            WarehouseInventoryHistoryRepository historyRepository,
+            StockUpdateProducer stockUpdateProducer) {
         this.repository = repository;
+        this.historyRepository = historyRepository;
         this.stockUpdateProducer = stockUpdateProducer;
     }
 
+    @Transactional
     public Item createItem(Item item) {
         item.setWarehouseId(warehouseId);
         
         return repository.findByProductName(item.getProductName())
                 .map(existingItem -> {
-                    existingItem.setStockOnHand(existingItem.getStockOnHand() + item.getStockOnHand());
+                    // Item exists - add to stock
+                    int stockBefore = existingItem.getStockOnHand();
+                    int quantityAdded = item.getStockOnHand();
+                    int stockAfter = stockBefore + quantityAdded;
+                    
+                    existingItem.setStockOnHand(stockAfter);
                     existingItem.setPrice(item.getPrice());
                     Item saved = repository.save(existingItem);
+                    
+                    // Record history
+                    recordHistory(
+                        saved.getId(),
+                        saved.getProductName(),
+                        "ADDED",
+                        quantityAdded,
+                        saved.getPrice(),
+                        stockBefore,
+                        stockAfter,
+                        null,
+                        "Restocked inventory"
+                    );
                     
                     // Send update to RabbitMQ
                     stockUpdateProducer.sendStockUpdate(
@@ -42,9 +69,13 @@ public class ItemService {
                         saved.getPrice()
                     );
                     
+                    System.out.println("✅ Added " + quantityAdded + " units. Stock: " + 
+                                      stockBefore + " → " + stockAfter);
+                    
                     return saved;
                 })
                 .orElseGet(() -> {
+                    // New item
                     Item newItem = new Item();
                     newItem.setProductName(item.getProductName());
                     newItem.setPrice(item.getPrice());
@@ -52,6 +83,19 @@ public class ItemService {
                     newItem.setWarehouseId(warehouseId);
                     Item saved = repository.save(newItem);
                     
+                    // Record history
+                    recordHistory(
+                        saved.getId(),
+                        saved.getProductName(),
+                        "ADDED",
+                        saved.getStockOnHand(),
+                        saved.getPrice(),
+                        0,
+                        saved.getStockOnHand(),
+                        null,
+                        "Initial stock"
+                    );
+                    
                     // Send update to RabbitMQ
                     stockUpdateProducer.sendStockUpdate(
                         saved.getId(),
@@ -59,6 +103,8 @@ public class ItemService {
                         saved.getStockOnHand(),
                         saved.getPrice()
                     );
+                    
+                    System.out.println("✅ Created new product with " + saved.getStockOnHand() + " units");
                     
                     return saved;
                 });
@@ -83,8 +129,24 @@ public class ItemService {
             throw new RuntimeException("Insufficient stock");
         }
         
-        item.setStockOnHand(item.getStockOnHand() - quantity);
+        int stockBefore = item.getStockOnHand();
+        int stockAfter = stockBefore - quantity;
+        
+        item.setStockOnHand(stockAfter);
         Item saved = repository.save(item);
+        
+        // Record history
+        recordHistory(
+            saved.getId(),
+            saved.getProductName(),
+            "SOLD",
+            quantity,
+            saved.getPrice(),
+            stockBefore,
+            stockAfter,
+            retailerId,
+            "Sold to Retailer " + retailerId
+        );
         
         // Send stock update to RabbitMQ
         stockUpdateProducer.sendStockUpdate(
@@ -96,20 +158,38 @@ public class ItemService {
         
         System.out.println("✅ [Warehouse-" + warehouseId + "] Sold " + quantity + 
                           " units of " + saved.getProductName() + 
-                          ". Remaining stock: " + saved.getStockOnHand());
+                          ". Stock: " + stockBefore + " → " + stockAfter);
         
         return saved;
     }
 
+    @Transactional
     public Item updateItem(Long id, Item updatedItem) {
         Item existing = repository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Item not found with id: " + id));
         
+        int stockBefore = existing.getStockOnHand();
+        int stockAfter = updatedItem.getStockOnHand();
+        int difference = stockAfter - stockBefore;
+        
         existing.setProductName(updatedItem.getProductName());
         existing.setPrice(updatedItem.getPrice());
-        existing.setStockOnHand(updatedItem.getStockOnHand());
+        existing.setStockOnHand(stockAfter);
         
         Item saved = repository.save(existing);
+        
+        // Record history
+        recordHistory(
+            saved.getId(),
+            saved.getProductName(),
+            "ADJUSTED",
+            Math.abs(difference),
+            saved.getPrice(),
+            stockBefore,
+            stockAfter,
+            null,
+            difference > 0 ? "Stock increased" : "Stock decreased"
+        );
         
         // Send update to RabbitMQ
         stockUpdateProducer.sendStockUpdate(
@@ -119,6 +199,52 @@ public class ItemService {
             saved.getPrice()
         );
         
+        System.out.println("✅ Updated product. Stock: " + stockBefore + " → " + stockAfter);
+        
         return saved;
+    }
+    
+    /**
+     * Get inventory history for a product
+     */
+    public List<WarehouseInventoryHistory> getProductHistory(Long productId) {
+        return historyRepository.findByProductIdOrderByTransactionDateDesc(productId);
+    }
+    
+    /**
+     * Get all inventory history for this warehouse
+     */
+    public List<WarehouseInventoryHistory> getWarehouseHistory() {
+        return historyRepository.findByWarehouseIdOrderByTransactionDateDesc(warehouseId);
+    }
+    
+    /**
+     * Helper method to record inventory history
+     */
+    private void recordHistory(
+            Long productId,
+            String productName,
+            String transactionType,
+            int quantity,
+            float price,
+            int stockBefore,
+            int stockAfter,
+            Long retailerId,
+            String notes
+    ) {
+        WarehouseInventoryHistory history = new WarehouseInventoryHistory();
+        history.setWarehouseId(warehouseId);
+        history.setProductId(productId);
+        history.setProductName(productName);
+        history.setTransactionType(transactionType);
+        history.setQuantity(quantity);
+        history.setPriceAtTransaction(price);
+        history.setStockBefore(stockBefore);
+        history.setStockAfter(stockAfter);
+        history.setRetailerId(retailerId);
+        history.setTransactionDate(LocalDateTime.now());
+        history.setNotes(notes);
+        
+        historyRepository.save(history);
     }
 }

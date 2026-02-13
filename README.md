@@ -20,9 +20,9 @@ This is a resilient, multi-instance microservices system that simulates a comple
 Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer ↔ Customer UI
 ```
 
-- **Warehouse Instances**: Multiple warehouses managing local inventory
+- **Warehouse Instances**: Multiple warehouses managing local inventory and **full inventory movement history**
 - **Warehouse Central**: Intelligent router and cache that connects retailers to available warehouses
-- **Retailer Instances**: Multiple retailers purchasing from the central supply and selling to customers
+- **Retailer Instances**: Multiple retailers with independent inventory, **purchase/sale history, and audit trails**
 - **Customer Service**: Handles customer interactions and order history
 - **Customer UI**: React-based frontend for end-users
 - **RabbitMQ**: Message broker for real-time inventory synchronization
@@ -40,6 +40,8 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
 - Sell products to retailers via Warehouse Central
 - Broadcast stock changes via **RabbitMQ**
 - Auto-merge duplicate products by name
+- **Track every inventory movement** (ADDED, SOLD, ADJUSTED) in `warehouse_inventory_history` table
+- **Record which retailer bought** each item (retailerId stored on SOLD transactions)
 
 **Technology**: Spring Boot, PostgreSQL, RabbitMQ, JPA/Hibernate
 
@@ -56,6 +58,9 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
 - Maintain independent retailer inventory (Ids: 1, 2, 3)
 - Record sales transactions and customer orders
 - Auto-merge duplicate purchases
+- **Track inventory movements** (PURCHASED, SOLD) in `retailer_inventory_history` table
+- **Calculate weighted average purchase price** across multiple warehouse buys
+- **Link history entries to source records** via `referenceId` (purchase ID or sale ID)
 
 **Technology**: Spring Boot, PostgreSQL, RestTemplate, JPA/Hibernate
 
@@ -124,6 +129,7 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
                    ▼                     ▼                     ▼
            ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
            │  Retailer 1   │     │  Retailer 2   │     │  Retailer 3   │
+           │  [Inv History]│     │  [Inv History]│     │  [Inv History]│
            │  (Port 8082)  │     │  (Port 8092)  │     │  (Port 8102)  │
            └───────┬───────┘     └───────┬───────┘     └───────┬───────┘
                    │                     │                     │
@@ -135,29 +141,42 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
                        │          (Port 8090)           │      │
                        └───────────────┬────────────────┘      │
                                        │ REST                  │ AMQP
-                   ┌───────────────────┼───────────────────┐   │ (Stock)
-                   ▼                   ▼                   ▼   │
-           ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-           │  Warehouse 1  │   │  Warehouse 2  │   │  Warehouse 3  │
-           │  (Port 8081)  │   │  (Port 8091)  │   │  (Port 8101)  │
-           └───────┬───────┘   └───────┬───────┘   └───────┬───────┘
-                   │                   │                   │
-                   └──────────┐        │        ┌──────────┘
-                              ▼        ▼        ▼
-                      ┌─────────────────────────────────┐
-                      │            RabbitMQ             │
-                      │        (Message Broker)         │
-                      └─────────────────────────────────┘
+                  ┌───────────────────┼───────────────────┐   │ (Stock
+                  ▼                   ▼                   ▼   │ Updates)
+          ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+          │  Warehouse 1  │   │  Warehouse 2  │   │  Warehouse 3  │
+          │  [Inv History]│   │  [Inv History]│   │  [Inv History]│
+          │  (Port 8081)  │   │  (Port 8091)  │   │  (Port 8101)  │
+          └───────┬───────┘   └───────┬───────┘   └───────┬───────┘
+                  │                   │                   │
+                  └──────────┐        │        ┌──────────┘
+                             ▼        ▼        ▼
+                     ┌─────────────────────────────────┐
+                     │            RabbitMQ             │
+                     │        (Message Broker)         │
+                     └─────────────────────────────────┘
 
-          (All Services) ─────▶ ┌───────────────┐
-                                │  PostgreSQL   │
-                                │  (Shared DB)  │
-                                └───────────────┘
+         (All Services) ─────▶  ┌─────────────────────┐
+                                │     PostgreSQL      │
+                                │  (History Tables +  │
+                                │   Inventory Data)   │
+                                └─────────────────────┘
 ```
+
+> **📊 History Flow**: Every buy/sell/add/adjust operation at both the **Warehouse** and **Retailer** level automatically creates a history record in PostgreSQL with `stockBefore → stockAfter` snapshots, timestamps, and reference IDs linking back to the original transaction.
 
 ### Database & Messaging
 - **PostgreSQL 16**: Shared database engine with isolated service schemas
 - **RabbitMQ**: Event-driven architecture for inventory synchronization
+
+### Database Tables (New in this version)
+
+| Table | Service | Tracks |
+|-------|---------|--------|
+| `warehouse_inventory_history` | Warehouse | ADDED, SOLD, ADJUSTED events with retailerId |
+| `retailer_inventory_history` | Retailer | PURCHASED, SOLD events with referenceId |
+| `retailer_inventory` | Retailer | Current stock + weighted average purchase price |
+| `sale` | Retailer | Customer sales with selling price (20% markup) |
 
 ---
 
@@ -245,6 +264,14 @@ docker-compose logs -f rabbitmq
 }
 ```
 
+#### 🆕 Get Warehouse Inventory History
+**GET** `/api/warehouse/history`
+*Returns all inventory movements (ADDED, SOLD, ADJUSTED) for the warehouse, sorted by most recent*
+
+#### 🆕 Get Product History
+**GET** `/api/warehouse/history/product/{productId}`
+*Returns history for a specific product across all transaction types*
+
 ---
 
 ### Warehouse Central (http://localhost:8090)
@@ -297,6 +324,32 @@ docker-compose logs -f rabbitmq
 }
 ```
 
+#### 🆕 Get Current Inventory (with avg prices)
+**GET** `/api/retailer/inventory`
+*Shows current stock + weighted average purchase price per product*
+
+#### 🆕 Get Specific Product Inventory
+**GET** `/api/retailer/inventory/product/{productId}`
+
+#### 🆕 Get Purchase History
+**GET** `/api/retailer/purchases`
+*All purchases made from warehouses*
+
+#### 🆕 Get Sales History
+**GET** `/api/retailer/sales`
+*All sales made to customers*
+
+#### 🆕 Get Specific Sale
+**GET** `/api/retailer/sales/{id}`
+
+#### 🆕 Get Full Inventory Audit Trail
+**GET** `/api/retailer/inventory/history`
+*Complete log of all stock changes (PURCHASED, SOLD) with stockBefore/stockAfter snapshots*
+
+#### 🆕 Get Product-Specific History
+**GET** `/api/retailer/inventory/history/product/{productId}`
+*History filtered for a single product*
+
 ---
 
 ### Customer Service (http://localhost:8083)
@@ -343,6 +396,19 @@ docker-compose logs -f rabbitmq
 - Prevent duplicate product entries across the chain
 - Intelligent quantity merging on purchase/creation
 
+### 🆕 Comprehensive Inventory History Tracking
+- **Warehouse History** (`warehouse_inventory_history`):
+  - Tracks **ADDED** (new/restocked), **SOLD** (to retailer), **ADJUSTED** (manual edit) transactions
+  - Records which **retailer** purchased items (via `retailerId` field)
+  - Captures `stockBefore` → `stockAfter` snapshots for every change
+- **Retailer History** (`retailer_inventory_history`):
+  - Tracks **PURCHASED** (from warehouse) and **SOLD** (to customer) transactions
+  - **Links to source records** via `referenceId` (maps to `purchase.id` or `sale.id`)
+  - Records `priceAtTransaction` for cost tracking
+- **Weighted Average Pricing**: Retailer inventory automatically calculates weighted average purchase price when buying from multiple warehouses at different prices
+- **Automatic 20% Markup**: Retailer selling price is auto-calculated as `averagePurchasePrice × 1.2`
+- **Timestamped & Noted**: Every history entry includes `transactionDate` and optional `notes` field (e.g., "Sold to Retailer 2", "Initial stock")
+
 ---
 
 ## 🧪 Testing the Complete Flow
@@ -367,10 +433,21 @@ GET http://localhost:8083/api/customer/products
 POST http://localhost:8083/api/customer/orders
 ```
 
-### 5. Verify stock changes
+### 5. Verify stock and history
 ```bash
+# Check warehouse stock
 GET http://localhost:8081/api/warehouse/all
-GET http://localhost:8082/api/retailer/all
+
+# 🆕 Check warehouse history (see ADDED and SOLD records)
+GET http://localhost:8081/api/warehouse/history
+
+# Check retailer stock (with average prices)
+GET http://localhost:8082/api/retailer/inventory
+
+# 🆕 Check retailer history (see PURCHASED and SOLD records)
+GET http://localhost:8082/api/retailer/inventory/history
+
+# Check customer orders
 GET http://localhost:8083/api/customer/all
 ```
 
@@ -437,6 +514,7 @@ Services communicate using internal Docker network aliases:
 - Database persists data in Docker volume `retail_system_postgres_data`
 - Services restart automatically on failure
 - Auto-merge prevents duplicate product entries
+- **History tables are auto-created by JPA/Hibernate** (`ddl-auto` in Spring config)
 
 ---
 

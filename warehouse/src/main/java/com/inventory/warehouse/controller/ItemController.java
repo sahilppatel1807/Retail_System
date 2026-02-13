@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.inventory.warehouse.entity.Item;
+import com.inventory.warehouse.entity.WarehouseInventoryHistory;
 import com.inventory.warehouse.service.ItemService;
 
 @RestController
@@ -49,6 +50,22 @@ public class ItemController {
     @PutMapping("/{id}")
     public Item updateItem(@PathVariable Long id, @RequestBody Item item) {
         return service.updateItem(id, item);
+    }
+
+    /**
+     * Get inventory history for a specific product
+     */
+    @GetMapping("/history/product/{productId}")
+    public List<WarehouseInventoryHistory> getProductHistory(@PathVariable Long productId) {
+        return service.getProductHistory(productId);
+    }
+    
+    /**
+     * Get all inventory history for this warehouse
+     */
+    @GetMapping("/history")
+    public List<WarehouseInventoryHistory> getWarehouseHistory() {
+        return service.getWarehouseHistory();
     }
 
 }
