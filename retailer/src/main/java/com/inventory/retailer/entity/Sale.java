@@ -2,6 +2,7 @@ package com.inventory.retailer.entity;
 
 import java.time.LocalDateTime;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -19,10 +20,14 @@ public class Sale {
     private Long id;
     
     private Long retailerId;
-
     private Long productId;
-    private int quantity;
-
+    private String productName;
+    
+    private int quantitySold;
+    private float sellingPrice;
+    
     private String customerName;
-    private LocalDateTime soldAt;
+    
+    @Column(nullable = false)
+    private LocalDateTime saleDate;
 }
