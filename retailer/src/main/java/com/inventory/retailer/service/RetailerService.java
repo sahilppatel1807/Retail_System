@@ -19,8 +19,10 @@ import com.inventory.retailer.repository.SaleRepository;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 public class RetailerService {
 
     private final PurchaseRepository purchaseRepository;
@@ -50,14 +52,14 @@ public class RetailerService {
      */
     @Transactional
     public Purchase buyFromWarehouse(Long itemId, int quantity) {
-        System.out.println("\n🛒 [Retailer-" + retailerId + "] Buying from warehouse:");
-        System.out.println("   Item ID: " + itemId);
-        System.out.println("   Quantity: " + quantity);
+        log.info("\n🛒 [Retailer-" + retailerId + "] Buying from warehouse:");
+        log.info("   Item ID: " + itemId);
+        log.info("   Quantity: " + quantity);
 
         // Call warehouse-central to buy item
         ItemResponse itemResponse = warehouseClient.buyFromWarehouse(retailerId, itemId, quantity);
 
-        System.out.println("✅ Received from Warehouse-" + itemResponse.getWarehouseId());
+        log.info("✅ Received from Warehouse-" + itemResponse.getWarehouseId());
 
         // STEP 1: Create Purchase record (transaction history)
         Purchase purchase = new Purchase();
@@ -69,7 +71,7 @@ public class RetailerService {
         purchase.setQuantity(quantity);
 
         Purchase savedPurchase = purchaseRepository.save(purchase);
-        System.out.println("📝 Purchase record created (ID: " + savedPurchase.getId() + ")");
+        log.info("📝 Purchase record created (ID: " + savedPurchase.getId() + ")");
 
         // STEP 2: Update RetailerInventory (current stock)
         updateInventoryAfterPurchase(
@@ -88,10 +90,10 @@ public class RetailerService {
      */
     @Transactional
     public Sale placeOrder(Long productId, int quantity, String customerName) {
-        System.out.println("\n💰 [Retailer-" + retailerId + "] Selling to customer:");
-        System.out.println("   Product ID: " + productId);
-        System.out.println("   Quantity: " + quantity);
-        System.out.println("   Customer: " + customerName);
+        log.info("\n💰 [Retailer-" + retailerId + "] Selling to customer:");
+        log.info("   Product ID: " + productId);
+        log.info("   Quantity: " + quantity);
+        log.info("   Customer: " + customerName);
 
         // STEP 1: Check if we have the product in inventory
         RetailerInventory inventory = inventoryRepository
@@ -103,7 +105,7 @@ public class RetailerService {
             throw new RuntimeException(
                     "Insufficient stock. Available: " + inventory.getQuantityOnHand() +
                             ", Requested: " + quantity
-            );
+            ); 
         }
 
         // STEP 3: Create Sale record (transaction history)
@@ -117,7 +119,7 @@ public class RetailerService {
         sale.setSaleDate(LocalDateTime.now());
 
         Sale savedSale = saleRepository.save(sale);
-        System.out.println("📝 Sale record created (ID: " + savedSale.getId() + ")");
+        log.info("📝 Sale record created (ID: " + savedSale.getId() + ")");
 
         // STEP 4: Update RetailerInventory (reduce stock)
         updateInventoryAfterSale(productId, quantity, savedSale.getId());
@@ -157,7 +159,7 @@ public class RetailerService {
             inventory.setAveragePurchasePrice(newAveragePrice);
             inventory.setLastUpdated(LocalDateTime.now());
 
-            System.out.println("➕ Created new inventory entry");
+            log.info("➕ Created new inventory entry");
 
         } else {
             // Existing product - update inventory
@@ -174,13 +176,13 @@ public class RetailerService {
             inventory.setAveragePurchasePrice(newAveragePrice);
             inventory.setLastUpdated(LocalDateTime.now());
 
-            System.out.println("📝 Updated existing inventory");
+            log.info("📝 Updated existing inventory");
         }
 
         inventoryRepository.save(inventory);
 
-        System.out.println("   Stock: " + stockBefore + " → " + stockAfter);
-        System.out.println("   Avg Price: $" + String.format("%.2f", newAveragePrice));
+        log.info("   Stock: " + stockBefore + " → " + stockAfter);
+        log.info("   Avg Price: $" + String.format("%.2f", newAveragePrice));
 
         // Record history
         recordInventoryHistory(
@@ -212,8 +214,8 @@ public class RetailerService {
 
         inventoryRepository.save(inventory);
 
-        System.out.println("📦 Updated inventory after sale");
-        System.out.println("   Stock: " + stockBefore + " → " + stockAfter);
+        log.info("📦 Updated inventory after sale");
+        log.info("   Stock: " + stockBefore + " → " + stockAfter);
 
         // Record history
         recordInventoryHistory(
@@ -258,7 +260,7 @@ public class RetailerService {
 
         inventoryHistoryRepository.save(history);
 
-        System.out.println("📊 Inventory history recorded: " + transactionType);
+        log.info("📊 Inventory history recorded: " + transactionType);
     }
 
     // ==================== QUERY METHODS ====================

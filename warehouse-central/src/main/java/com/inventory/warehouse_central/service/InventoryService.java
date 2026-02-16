@@ -1,16 +1,20 @@
 package com.inventory.warehouse_central.service;
 
-import com.inventory.warehouse_central.config.WarehouseConfig;
-import com.inventory.warehouse_central.config.WarehouseConfig.WarehouseInfo;
-import com.inventory.warehouse_central.model.InventoryItem;
-import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.stereotype.Service;
+
+import com.inventory.warehouse_central.config.WarehouseConfig;
+import com.inventory.warehouse_central.config.WarehouseConfig.WarehouseInfo;
+import com.inventory.warehouse_central.model.InventoryItem;
+
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@Slf4j
 public class InventoryService {
 
     // In-memory cache: Key = productId, Value = List of warehouses that have it
@@ -41,12 +45,12 @@ public class InventoryService {
             existing.setStockOnHand(newStock);
             existing.setPrice(price);
             existing.setProductName(productName);
-            System.out.println("📝 Updated cache: Product " + productId + " in Warehouse " + warehouseId + " → " + newStock + " units");
+            log.info("📝 Updated cache: Product " + productId + " in Warehouse " + warehouseId + " → " + newStock + " units");
         } else {
             // Add new entry
             InventoryItem newItem = new InventoryItem(productId, productName, warehouseId, newStock, price);
             warehouseList.add(newItem);
-            System.out.println("➕ Added to cache: Product " + productId + " in Warehouse " + warehouseId + " → " + newStock + " units");
+            log.info("➕ Added to cache: Product " + productId + " in Warehouse " + warehouseId + " → " + newStock + " units");
         }
     }
 
@@ -58,7 +62,7 @@ public class InventoryService {
         List<InventoryItem> inventoryItems = inventoryCache.get(productId);
 
         if (inventoryItems == null || inventoryItems.isEmpty()) {
-            System.out.println("⚠️ Product " + productId + " not found in cache");
+            log.info("⚠️ Product " + productId + " not found in cache");
             return new ArrayList<>();
         }
 
@@ -94,7 +98,7 @@ public class InventoryService {
         
         if (items != null) {
             items.removeIf(item -> item.getWarehouseId().equals(warehouseId));
-            System.out.println("🚫 Marked Warehouse " + warehouseId + " as out of stock for Product " + productId);
+            log.info("🚫 Marked Warehouse " + warehouseId + " as out of stock for Product " + productId);
         }
     }
 

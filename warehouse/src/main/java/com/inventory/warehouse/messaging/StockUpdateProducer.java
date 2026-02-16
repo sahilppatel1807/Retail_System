@@ -1,11 +1,15 @@
 package com.inventory.warehouse.messaging;
 
-import com.inventory.warehouse.dto.StockUpdateMessage;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import com.inventory.warehouse.dto.StockUpdateMessage;
+
+import lombok.extern.slf4j.Slf4j;
+
 @Component
+@Slf4j
 public class StockUpdateProducer {
 
     private final RabbitTemplate rabbitTemplate;
@@ -35,7 +39,7 @@ public class StockUpdateProducer {
 
         rabbitTemplate.convertAndSend(EXCHANGE, ROUTING_KEY, message);
         
-        System.out.println("📤 [Warehouse-" + warehouseId + "] Sent stock update: Product " + 
+        log.info("📤 [Warehouse-" + warehouseId + "] Sent stock update: Product " + 
                           productId + " now has " + newStock + " units");
     }
 }

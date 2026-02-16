@@ -14,8 +14,10 @@ import com.inventory.warehouse.repository.WarehouseInventoryHistoryRepository;
 
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 public class ItemService {
     private final ItemRepository repository;
     private final WarehouseInventoryHistoryRepository historyRepository;
@@ -69,7 +71,7 @@ public class ItemService {
                         saved.getPrice()
                     );
                     
-                    System.out.println("✅ Added " + quantityAdded + " units. Stock: " + 
+                    log.info("✅ Added " + quantityAdded + " units. Stock: " + 
                                       stockBefore + " → " + stockAfter);
                     
                     return saved;
@@ -104,7 +106,7 @@ public class ItemService {
                         saved.getPrice()
                     );
                     
-                    System.out.println("✅ Created new product with " + saved.getStockOnHand() + " units");
+                    log.info("✅ Created new product with " + saved.getStockOnHand() + " units");
                     
                     return saved;
                 });
@@ -156,7 +158,7 @@ public class ItemService {
             saved.getPrice()
         );
         
-        System.out.println("✅ [Warehouse-" + warehouseId + "] Sold " + quantity + 
+        log.info("✅ [Warehouse-" + warehouseId + "] Sold " + quantity + 
                           " units of " + saved.getProductName() + 
                           ". Stock: " + stockBefore + " → " + stockAfter);
         
@@ -199,7 +201,7 @@ public class ItemService {
             saved.getPrice()
         );
         
-        System.out.println("✅ Updated product. Stock: " + stockBefore + " → " + stockAfter);
+        log.info("✅ Updated product. Stock: " + stockBefore + " → " + stockAfter);
         
         return saved;
     }
