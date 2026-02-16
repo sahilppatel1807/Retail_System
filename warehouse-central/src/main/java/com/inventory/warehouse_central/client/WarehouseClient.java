@@ -1,11 +1,15 @@
 package com.inventory.warehouse_central.client;
 
-import com.inventory.warehouse_central.config.WarehouseConfig.WarehouseInfo;
-import com.inventory.warehouse_central.dto.ItemResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import com.inventory.warehouse_central.config.WarehouseConfig.WarehouseInfo;
+import com.inventory.warehouse_central.dto.ItemResponse;
+
+import lombok.extern.slf4j.Slf4j;
+
 @Component
+@Slf4j
 public class WarehouseClient {
 
     /**
@@ -17,7 +21,7 @@ public class WarehouseClient {
             int quantity,
             Long retailerId
     ) {
-        System.out.println("🔗 Calling Warehouse " + warehouse.getId() + 
+        log.info("🔗 Calling Warehouse " + warehouse.getId() + 
                           " to buy " + quantity + " units of Product " + productId);
 
         // Build the full URL
@@ -26,7 +30,7 @@ public class WarehouseClient {
                          "&quantity=" + quantity +
                          "&retailerId=" + retailerId;
 
-        System.out.println("   URL: " + fullUrl);
+        log.info("   URL: " + fullUrl);
 
         // Create simple RestClient
         RestClient restClient = RestClient.create();
@@ -38,7 +42,7 @@ public class WarehouseClient {
                 .retrieve()
                 .body(ItemResponse.class);
 
-        System.out.println("✅ Successfully purchased from Warehouse " + warehouse.getId());
+        log.info("✅ Successfully purchased from Warehouse " + warehouse.getId());
 
         return response;
     }

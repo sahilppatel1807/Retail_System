@@ -1,11 +1,15 @@
 package com.inventory.warehouse_central.messaging;
 
-import com.inventory.warehouse_central.dto.StockUpdateMessage;
-import com.inventory.warehouse_central.service.InventoryService;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
+import com.inventory.warehouse_central.dto.StockUpdateMessage;
+import com.inventory.warehouse_central.service.InventoryService;
+
+import lombok.extern.slf4j.Slf4j;
+
 @Component
+@Slf4j
 public class StockUpdateConsumer {
 
     private final InventoryService inventoryService;
@@ -21,7 +25,7 @@ public class StockUpdateConsumer {
     @RabbitListener(queues = "stock.updates.queue")
     public void handleStockUpdate(StockUpdateMessage message) {
         
-        System.out.println("📥 Received stock update from Warehouse " + message.getWarehouseId() + 
+        log.info("📥 Received stock update from Warehouse " + message.getWarehouseId() + 
                           ": Product " + message.getProductId() + 
                           " now has " + message.getNewStock() + " units");
         
@@ -34,6 +38,6 @@ public class StockUpdateConsumer {
             message.getPrice()
         );
         
-        System.out.println("✅ Cache updated successfully");
+        log.info("✅ Cache updated successfully");
     }
 }

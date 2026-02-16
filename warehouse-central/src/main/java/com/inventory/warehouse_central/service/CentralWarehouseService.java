@@ -1,17 +1,20 @@
 package com.inventory.warehouse_central.service;
 
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.stereotype.Service;
+
 import com.inventory.warehouse_central.client.WarehouseClient;
 import com.inventory.warehouse_central.config.WarehouseConfig.WarehouseInfo;
 import com.inventory.warehouse_central.dto.ItemResponse;
 import com.inventory.warehouse_central.dto.PurchaseRequest;
 import com.inventory.warehouse_central.model.InventoryItem;
 
-import org.springframework.stereotype.Service;
-
-import java.util.List;
-import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 public class CentralWarehouseService {
 
     private final InventoryService inventoryService;
@@ -26,10 +29,10 @@ public class CentralWarehouseService {
     }
 
     public ItemResponse routePurchase(PurchaseRequest request) {
-        System.out.println("\n🎯 Routing purchase request:");
-        System.out.println("   Product ID: " + request.getProductId());
-        System.out.println("   Quantity: " + request.getQuantity());
-        System.out.println("   Retailer ID: " + request.getRetailerId());
+        log.info("\n🎯 Routing purchase request:");
+        log.info("   Product ID: " + request.getProductId());
+        log.info("   Quantity: " + request.getQuantity());
+        log.info("   Retailer ID: " + request.getRetailerId());
 
         // STEP 1: Check cache for warehouses with stock
         List<WarehouseInfo> candidateWarehouses = inventoryService.findWarehousesWithStock(
@@ -38,13 +41,13 @@ public class CentralWarehouseService {
         );
 
         if (!candidateWarehouses.isEmpty()) {
-            System.out.println("✅ Found " + candidateWarehouses.size() + " warehouse(s) in cache");
+            log.info("✅ Found " + candidateWarehouses.size() + " warehouse(s) in cache");
             
             // Try warehouses from cache
             for (int i = 0; i < candidateWarehouses.size(); i++) {
                 WarehouseInfo warehouse = candidateWarehouses.get(i);
                 
-                System.out.println("\n📍 Attempt " + (i + 1) + "/" + candidateWarehouses.size() + 
+                log.info("\n📍 Attempt " + (i + 1) + "/" + candidateWarehouses.size() + 
                                   ": Trying Warehouse " + warehouse.getId());
 
                 try {
@@ -57,12 +60,12 @@ public class CentralWarehouseService {
 
                     response.setWarehouseId(warehouse.getId());
                     
-                    System.out.println("✅ SUCCESS! Purchased from Warehouse " + warehouse.getId());
+                    log.info("✅ SUCCESS! Purchased from Warehouse " + warehouse.getId());
                     
                     return response;
 
                 } catch (Exception e) {
-                    System.out.println("❌ Failed: " + e.getMessage());
+                    log.info("❌ Failed: " + e.getMessage());
                     
                     // Mark this warehouse as out of stock in cache
                     inventoryService.markWarehouseOutOfStock(
@@ -70,13 +73,13 @@ public class CentralWarehouseService {
                             warehouse.getId()
                     );
                     
-                    System.out.println("   Trying next warehouse...");
+                    log.info("   Trying next warehouse...");
                 }
             }
         }
 
         // STEP 2: Cache failed - try all warehouses directly (fallback)
-        System.out.println("\n⚠️ Cache didn't help. Trying all warehouses directly...");
+        log.info("\n⚠️ Cache didn't help. Trying all warehouses directly...");
         
         return tryAllWarehousesDirectly(request);
     }
@@ -89,7 +92,7 @@ public class CentralWarehouseService {
         
         for (WarehouseInfo warehouse : allWarehouses) {
             try {
-                System.out.println("🔍 Trying Warehouse " + warehouse.getId() + " directly...");
+                log.info("🔍 Trying Warehouse " + warehouse.getId() + " directly...");
                 
                 ItemResponse response = warehouseClient.buyItem(
                         warehouse,
@@ -100,17 +103,17 @@ public class CentralWarehouseService {
 
                 response.setWarehouseId(warehouse.getId());
                 
-                System.out.println("✅ SUCCESS! Purchased from Warehouse " + warehouse.getId());
+                log.info("✅ SUCCESS! Purchased from Warehouse " + warehouse.getId());
                 
                 return response;
 
             } catch (Exception e) {
-                System.out.println("❌ Warehouse " + warehouse.getId() + " failed: " + e.getMessage());
+                log.info("❌ Warehouse " + warehouse.getId() + " failed: " + e.getMessage());
             }
         }
 
         // All warehouses failed
-        System.out.println("\n❌ ALL WAREHOUSES FAILED");
+        log.info("\n❌ ALL WAREHOUSES FAILED");
         throw new RuntimeException(
                 "Product " + request.getProductId() + " is not available in any warehouse"
         );
