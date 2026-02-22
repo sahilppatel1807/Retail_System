@@ -33,8 +33,18 @@ public class PurchaseController {
      * Buy from warehouse
      */
     @PostMapping("/buy")
-    public Purchase buy(@RequestBody PurchaseRequest request) {
+    public com.inventory.retailer.entity.OrderTracking buy(@RequestBody com.inventory.retailer.dto.PurchaseRequest request) {
         return service.buyFromWarehouse(request.getItemId(), request.getQuantity());
+    }
+
+    @GetMapping("/track/{orderId}")
+    public com.inventory.retailer.dto.OrderTrackingResponse trackOrder(@PathVariable String orderId) {
+        return service.getOrderTrackingCustom(orderId);
+    }
+
+    @GetMapping("/track/all")
+    public List<com.inventory.retailer.dto.OrderTrackingResponse> getAllTracking() {
+        return service.getAllTracking();
     }
 
     /**

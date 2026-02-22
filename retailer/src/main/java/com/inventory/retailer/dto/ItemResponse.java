@@ -4,9 +4,10 @@ import lombok.Data;
 
 @Data
 public class ItemResponse {
-    private Long id;
+    private String orderId;
+    private String status;
+    private Long productId;
     private String productName;
+    private int quantity;
     private float price;
-    private int stockOnHand;
-    private Long warehouseId;
 }

@@ -35,6 +35,24 @@ public class ItemService {
         this.stockUpdateProducer = stockUpdateProducer;
     }
 
+    /**
+     * Broadcast all items to Order Service on startup
+     */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void broadcastStockOnStartup() {
+        log.info("🚀 System ready. Broadcasting initial stock for Warehouse {}...", warehouseId);
+        List<Item> items = repository.findAll();
+        for (Item item : items) {
+            stockUpdateProducer.sendStockUpdate(
+                item.getId(),
+                item.getProductName(),
+                item.getStockOnHand(),
+                item.getPrice()
+            );
+        }
+        log.info("✅ Broadcasted {} items.", items.size());
+    }
+
     @Transactional
     public Item createItem(Item item) {
         item.setWarehouseId(warehouseId);

@@ -12,6 +12,8 @@ import com.inventory.retailer.entity.Purchase;
 import com.inventory.retailer.entity.RetailerInventory;
 import com.inventory.retailer.entity.RetailerInventoryHistory;
 import com.inventory.retailer.entity.Sale;
+import com.inventory.retailer.entity.OrderTracking;
+import com.inventory.retailer.repository.OrderTrackingRepository;
 import com.inventory.retailer.repository.PurchaseRepository;
 import com.inventory.retailer.repository.RetailerInventoryHistoryRepository;
 import com.inventory.retailer.repository.RetailerInventoryRepository;
@@ -29,6 +31,7 @@ public class RetailerService {
     private final SaleRepository saleRepository;
     private final RetailerInventoryRepository inventoryRepository;
     private final RetailerInventoryHistoryRepository inventoryHistoryRepository;
+    private final OrderTrackingRepository orderTrackingRepository;
     private final WarehouseClient warehouseClient;
 
     @Value("${retailer.id}")
@@ -39,50 +42,84 @@ public class RetailerService {
             SaleRepository saleRepository,
             RetailerInventoryRepository inventoryRepository,
             RetailerInventoryHistoryRepository inventoryHistoryRepository,
+            OrderTrackingRepository orderTrackingRepository,
             WarehouseClient warehouseClient) {
         this.purchaseRepository = purchaseRepository;
         this.saleRepository = saleRepository;
         this.inventoryRepository = inventoryRepository;
         this.inventoryHistoryRepository = inventoryHistoryRepository;
+        this.orderTrackingRepository = orderTrackingRepository;
         this.warehouseClient = warehouseClient;
     }
 
     /**
-     * Buy items from warehouse via warehouse-central
+     * Buy items from warehouse via order-service (Async Flow)
      */
     @Transactional
-    public Purchase buyFromWarehouse(Long itemId, int quantity) {
-        log.info("\n🛒 [Retailer-" + retailerId + "] Buying from warehouse:");
+    public OrderTracking buyFromWarehouse(Long itemId, int quantity) {
+        log.info("\n🛒 [Retailer-" + retailerId + "] Requesting buy from warehouse:");
         log.info("   Item ID: " + itemId);
         log.info("   Quantity: " + quantity);
 
-        // Call warehouse-central to buy item
+        // Call order-service to initiate purchase
         ItemResponse itemResponse = warehouseClient.buyFromWarehouse(retailerId, itemId, quantity);
 
-        log.info("✅ Received from Warehouse-" + itemResponse.getWarehouseId());
+        log.info("✅ Order Accepted with ID: " + itemResponse.getOrderId());
+
+        // Create OrderTracking record
+        OrderTracking tracking = new OrderTracking();
+        tracking.setOrderId(itemResponse.getOrderId());
+        tracking.setProductId(itemId);
+        tracking.setProductName(itemResponse.getProductName());
+        tracking.setQuantity(quantity);
+        tracking.setStatus(itemResponse.getStatus());
+        tracking.setPrice(itemResponse.getPrice());
+        
+        return orderTrackingRepository.save(tracking);
+    }
+
+    /**
+     * Fulfill the purchase when order is COMPLETED
+     */
+    @Transactional
+    public void fulfillPurchase(String orderId, float price) {
+        OrderTracking tracking = orderTrackingRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new RuntimeException("Order tracking not found for: " + orderId));
+
+        if ("COMPLETED".equals(tracking.getStatus())) {
+            log.info("⚠️ Order {} already fulfilled", orderId);
+            return;
+        }
+
+        log.info("🎊 Fulfilling order {}: {} x {} @ ${}", orderId, tracking.getProductName(), tracking.getQuantity(), price);
+
+        // Update tracking price
+        tracking.setPrice(price);
 
         // STEP 1: Create Purchase record (transaction history)
         Purchase purchase = new Purchase();
         purchase.setRetailerId(retailerId);
-        purchase.setWarehouseId(itemResponse.getWarehouseId());
-        purchase.setWarehouseItemId(itemResponse.getId());
-        purchase.setProductName(itemResponse.getProductName());
-        purchase.setPrice(itemResponse.getPrice());
-        purchase.setQuantity(quantity);
+        purchase.setProductName(tracking.getProductName());
+        purchase.setPrice(price);
+        purchase.setQuantity(tracking.getQuantity());
+        purchase.setWarehouseItemId(tracking.getProductId()); // Using internal product ID
 
         Purchase savedPurchase = purchaseRepository.save(purchase);
-        log.info("📝 Purchase record created (ID: " + savedPurchase.getId() + ")");
-
+        
         // STEP 2: Update RetailerInventory (current stock)
         updateInventoryAfterPurchase(
-                itemResponse.getId(),
-                itemResponse.getProductName(),
-                quantity,
-                itemResponse.getPrice(),
+                tracking.getProductId(),
+                tracking.getProductName(),
+                tracking.getQuantity(),
+                price,
                 savedPurchase.getId()
         );
 
-        return savedPurchase;
+        // STEP 3: Update tracking status
+        tracking.setStatus("COMPLETED");
+        orderTrackingRepository.save(tracking);
+        
+        log.info("✅ Order {} fulfilled and added to inventory", orderId);
     }
 
     /**
@@ -114,7 +151,7 @@ public class RetailerService {
         sale.setProductId(productId);
         sale.setProductName(inventory.getProductName());
         sale.setQuantitySold(quantity);
-        sale.setSellingPrice(inventory.getAveragePurchasePrice() * 1.2f); // 20% markup
+        sale.setSellingPrice(inventory.getAveragePurchasePrice() * 1.15f); // 15% markup
         sale.setCustomerName(customerName);
         sale.setSaleDate(LocalDateTime.now());
 
@@ -344,5 +381,44 @@ public class RetailerService {
     public Purchase findItem(Long id) {
         return purchaseRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Purchase not found with id: " + id));
+    }
+
+    /**
+     * Get order tracking by order ID (Customized Response)
+     */
+    public com.inventory.retailer.dto.OrderTrackingResponse getOrderTrackingCustom(String orderId) {
+        OrderTracking tracking = orderTrackingRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Order tracking not found for: " + orderId));
+        
+        return new com.inventory.retailer.dto.OrderTrackingResponse(
+            tracking.getId(),
+            tracking.getOrderId(),
+            tracking.getStatus(),
+            tracking.getCreatedAt(),
+            tracking.getUpdatedAt()
+        );
+    }
+
+    /**
+     * Get all order tracking records (Customized Response)
+     */
+    public List<com.inventory.retailer.dto.OrderTrackingResponse> getAllTracking() {
+        return orderTrackingRepository.findAll().stream()
+                .map(tracking -> new com.inventory.retailer.dto.OrderTrackingResponse(
+                        tracking.getId(),
+                        tracking.getOrderId(),
+                        tracking.getStatus(),
+                        tracking.getCreatedAt(),
+                        tracking.getUpdatedAt()
+                ))
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Get order tracking by order ID
+     */
+    public OrderTracking getOrderTracking(String orderId) {
+        return orderTrackingRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new EntityNotFoundException("Order tracking not found for: " + orderId));
     }
 }
