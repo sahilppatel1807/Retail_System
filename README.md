@@ -2,7 +2,7 @@
 
 A complete retail inventory management system demonstrating microservices architecture with Spring Boot and React.
 
-postgres changed to 5432:5432 to 5433:5432 so it will connect the local 5433 to docker's 5432
+> **Note**: PostgreSQL local port is **5433** mapped to Docker's 5432 to avoid conflicts with a local Postgres installation.
 
 ## 📋 Table of Contents
 - [System Overview](#system-overview)
@@ -12,22 +12,23 @@ postgres changed to 5432:5432 to 5433:5432 so it will connect the local 5433 to 
 - [API Endpoints](#api-endpoints)
 - [Features](#features)
 - [Testing the Flow](#testing-the-complete-flow)
+
 ---
 
 ## 🎯 System Overview
 
-This is a resilient, multi-instance microservices system that simulates a complex retail supply chain:
+This is a resilient, multi-instance microservices system that simulates a complex retail supply chain, powered by **asynchronous, event-driven messaging via RabbitMQ**:
 
 ```
-Warehouses (1, 2, 3) ↔ Order Service ↔ Retailers (1, 2, 3) ↔ Customer ↔ Customer UI
+Warehouses (1, 2, 3) ↔ [RabbitMQ] ↔ Order Service ↔ [RabbitMQ] ↔ Retailers (1, 2, 3) ↔ Customer ↔ Customer UI
 ```
 
-- **Warehouse Instances**: Multiple warehouses managing local inventory and **full inventory movement history**
-- **Order Service**: Intelligent router and cache that connects retailers to available warehouses
+- **Warehouse Instances**: Multiple warehouses managing local inventory with **full inventory movement history**
+- **Order Service**: Intelligent async router with in-memory inventory cache
 - **Retailer Instances**: Multiple retailers with independent inventory, **purchase/sale history, and audit trails**
 - **Customer Service**: Handles customer interactions and order history
 - **Customer UI**: React-based frontend for end-users
-- **RabbitMQ**: Message broker for real-time inventory synchronization
+- **RabbitMQ**: The backbone of all asynchronous communication
 
 ---
 
@@ -39,9 +40,9 @@ Warehouses (1, 2, 3) ↔ Order Service ↔ Retailers (1, 2, 3) ↔ Customer ↔ 
 
 **Responsibilities**:
 - Manage local stock with unique warehouse IDs (1, 2, 3)
-- Sell products to retailers via Order Service
-- Broadcast stock changes via **RabbitMQ**
-- Auto-merge duplicate products by name
+- On startup, **broadcast all current stock** to Order Service via RabbitMQ
+- Fulfill orders received via RabbitMQ queue
+- Report completion (with price) back to Order Service
 - **Track every inventory movement** (ADDED, SOLD, ADJUSTED) in `warehouse_inventory_history` table
 - **Record which retailer bought** each item (retailerId stored on SOLD transactions)
 
@@ -56,12 +57,11 @@ Warehouses (1, 2, 3) ↔ Order Service ↔ Retailers (1, 2, 3) ↔ Customer ↔ 
 **Purpose**: Scalable retail layer between warehouses and customers
 
 **Responsibilities**:
-- Purchase from the most available warehouse via Order Service
-- Maintain independent retailer inventory (Ids: 1, 2, 3)
-- Record sales transactions and customer orders
-- Auto-merge duplicate purchases
+- Purchase stock via Order Service using asynchronous messaging
+- Track order status via `OrderTracking` (`ACCEPTED` → `ROUTED` → `COMPLETED`)
+- Maintain independent inventory with **weighted average purchase price**
+- Sell to customers with a **15% profit markup**
 - **Track inventory movements** (PURCHASED, SOLD) in `retailer_inventory_history` table
-- **Calculate weighted average purchase price** across multiple warehouse buys
 - **Link history entries to source records** via `referenceId` (purchase ID or sale ID)
 
 **Technology**: Spring Boot, PostgreSQL, RestTemplate, JPA/Hibernate
@@ -72,15 +72,16 @@ Warehouses (1, 2, 3) ↔ Order Service ↔ Retailers (1, 2, 3) ↔ Customer ↔ 
 
 ### 3. Order Service (Port 8090)
 
-**Purpose**: Intelligent routing and inventory caching layer
+**Purpose**: Intelligent async routing and inventory caching layer
 
 **Responsibilities**:
-- Maintain a high-performance cache of all warehouse inventories
-- Listen to RabbitMQ for real-time stock updates from warehouses
-- Route retailer purchase requests to warehouses with sufficient stock
-- Provide fallback mechanisms if a warehouse is unreachable
+- Maintain a high-performance **in-memory cache** of all warehouse inventories
+- Listen to stock updates from warehouses (`stock.updates.queue`)
+- Accept purchase requests from retailers and publish to `order.accepted.queue`
+- **Route orders** to the most stocked warehouse (`order.routed.warehouse.{1,2,3}`)
+- Relay completion status back to the retailer's dedicated queue
 
-**Technology**: Spring Boot, RabbitMQ (Consumer), In-Memory Cache
+**Technology**: Spring Boot, RabbitMQ (Consumer + Producer), In-Memory Cache
 
 **Directory**: `/order-service`
 
@@ -113,72 +114,100 @@ Warehouses (1, 2, 3) ↔ Order Service ↔ Retailers (1, 2, 3) ↔ Customer ↔ 
 
 ## 🏗️ Architecture
 
-### Service Communication Flow
+### Service Communication & Queue Flow
 
 ```text
-                                 ┌───────────────┐
-                                 │  Customer UI  │
-                                 │  (Port 3000)  │
-                                 └───────┬───────┘
-                                         │ REST
-                                         ▼
-                                 ┌───────────────┐
-                                 │  Customer Svc │
-                                 │  (Port 8083)  │
-                                 └───────┬───────┘
-                                         │ REST
-                   ┌─────────────────────┼─────────────────────┐
-                   ▼                     ▼                     ▼
-           ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-           │  Retailer 1   │     │  Retailer 2   │     │  Retailer 3   │
-           │  [Inv History]│     │  [Inv History]│     │  [Inv History]│
-           │  (Port 8082)  │     │  (Port 8092)  │     │  (Port 8102)  │
-           └───────┬───────┘     └───────┬───────┘     └───────┬───────┘
-                   │                     │                     │
-                   └───────────┐         │         ┌───────────┘
-                               ▼         ▼         ▼
-                       ┌────────────────────────────────┐
-                       │       Order Service        │
-                       │     (Routing & Inventory)      │◀─────┐
-                       │          (Port 8090)           │      │
-                       └───────────────┬────────────────┘      │
-                                       │ REST                  │ AMQP
-                  ┌───────────────────┼───────────────────┐   │ (Stock
-                  ▼                   ▼                   ▼   │ Updates)
-          ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-          │  Warehouse 1  │   │  Warehouse 2  │   │  Warehouse 3  │
-          │  [Inv History]│   │  [Inv History]│   │  [Inv History]│
-          │  (Port 8081)  │   │  (Port 8091)  │   │  (Port 8101)  │
-          └───────┬───────┘   └───────┬───────┘   └───────┬───────┘
-                  │                   │                   │
-                  └──────────┐        │        ┌──────────┘
-                             ▼        ▼        ▼
-                     ┌─────────────────────────────────┐
-                     │            RabbitMQ             │
-                     │        (Message Broker)         │
-                     └─────────────────────────────────┘
+                              ┌───────────────┐
+                              │  Customer UI  │
+                              │  (Port 3000)  │
+                              └───────┬───────┘
+                                      │ REST
+                                      ▼
+                              ┌───────────────┐
+                              │  Customer Svc │
+                              │  (Port 8083)  │
+                              └───────┬───────┘
+                                      │ REST
+                ┌─────────────────────┼─────────────────────┐
+                ▼                     ▼                     ▼
+        ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+        │  Retailer 1   │     │  Retailer 2   │     │  Retailer 3   │
+        │  [Inv History]│     │  [Inv History]│     │  [Inv History]│
+        │  (Port 8082)  │     │  (Port 8092)  │     │  (Port 8102)  │
+        └───────┬───────┘     └───────┬───────┘     └───────┬───────┘
+                │           HTTP POST /purchase (REST)       │
+                └──────────────────┬────────────────────────┘
+                                   ▼
+                       ┌───────────────────────┐
+                       │     Order Service     │
+                       │     (Port 8090)       │◀─────────────────┐
+                       │  [In-Memory Cache]    │                  │ AMQP
+                       └───────────────────────┘            (stock.updates.queue)
+                         │ Publishes to                          │
+                         │ order.accepted.queue                  │
+                         ▼                                       │
+              ┌──────────────────────────────────────────────────┴───┐
+              │                      RabbitMQ                        │
+              │                                                       │
+              │  ┌─────────────────────────────────────────────┐     │
+              │  │           order.accepted.queue              │     │
+              │  │     (Consumed by OrderRouterService)        │     │
+              │  └──────────────────┬──────────────────────────┘     │
+              │                     │ Routes to best warehouse        │
+              │  ┌──────────────────▼──────────────────────────┐     │
+              │  │       order.routed.warehouse.1              │     │
+              │  │       order.routed.warehouse.2              │     │
+              │  │       order.routed.warehouse.3              │     │
+              │  └──────────────────┬──────────────────────────┘     │
+              │                     │ Consumed by Warehouse           │
+              │  ┌──────────────────▼──────────────────────────┐     │
+              │  │           status.update.queue               │     │
+              │  │   Warehouse → Order Service (COMPLETED)     │     │
+              │  └──────────────────┬──────────────────────────┘     │
+              │                     │ Forwarded to Retailer           │
+              │  ┌──────────────────▼──────────────────────────┐     │
+              │  │       retailer.status.{retailerId}          │     │
+              │  │   Order Service → Retailer (final notify)   │     │
+              │  └─────────────────────────────────────────────┘     │
+              └───────────────────────────────────────────────────────┘
+                              │ Consumed by:
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+      ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+      │  Warehouse 1  │ │  Warehouse 2  │ │  Warehouse 3  │
+      │  [Inv History]│ │  [Inv History]│ │  [Inv History]│
+      │  (Port 8081)  │ │  (Port 8091)  │ │  (Port 8101)  │
+      └───────────────┘ └───────────────┘ └───────────────┘
 
-         (All Services) ─────▶  ┌─────────────────────┐
-                                │     PostgreSQL      │
-                                │  (History Tables +  │
-                                │   Inventory Data)   │
-                                └─────────────────────┘
+      ┌──────────────────────────────────────────────────────────────┐
+      │                        PostgreSQL                            │
+      │   warehouse_schema  │  retailer_schema  │  order_svc_schema  │
+      └──────────────────────────────────────────────────────────────┘
 ```
+
+### ⚡ Order Lifecycle Summary
+
+| Step | Component | Action |
+|------|-----------|--------|
+| 1 | **Retailer** | `POST /retailer/buy` → calls Order Service via HTTP |
+| 2 | **Order Service** | Saves order (`ACCEPTED`), publishes to `order.accepted.queue` |
+| 3 | **Order Service** | `OrderRouterService` picks it up, finds best warehouse, routes to `order.routed.warehouse.{N}` (→ `ROUTED`) |
+| 4 | **Warehouse** | `OrderConsumer` picks it up, deducts stock, sends `COMPLETED` via `status.update.queue` |
+| 5 | **Order Service** | `StatusUpdateConsumer` receives it, updates to `COMPLETED`, forwards to `retailer.status.{id}` |
+| 6 | **Retailer** | `StatusUpdateConsumer` receives it, updates `OrderTracking` to `COMPLETED`, adds stock to inventory |
 
 > **📊 History Flow**: Every buy/sell/add/adjust operation at both the **Warehouse** and **Retailer** level automatically creates a history record in PostgreSQL with `stockBefore → stockAfter` snapshots, timestamps, and reference IDs linking back to the original transaction.
 
-### Database & Messaging
-- **PostgreSQL 16**: Shared database engine with isolated service schemas
-- **RabbitMQ**: Event-driven architecture for inventory synchronization
-
-### Database Tables (New in this version)
+### Database Tables
 
 | Table | Service | Tracks |
 |-------|---------|--------|
 | `warehouse_inventory_history` | Warehouse | ADDED, SOLD, ADJUSTED events with retailerId |
 | `retailer_inventory_history` | Retailer | PURCHASED, SOLD events with referenceId |
 | `retailer_inventory` | Retailer | Current stock + weighted average purchase price |
-| `sale` | Retailer | Customer sales with selling price (20% markup) |
+| `sale` | Retailer | Customer sales with selling price (15% markup) |
+| `order_item` | Order Service | All routed orders and their statuses |
+| `order_tracking` | Retailer | Per-order status tracking |
 
 ---
 
@@ -195,39 +224,39 @@ Warehouses (1, 2, 3) ↔ Order Service ↔ Retailers (1, 2, 3) ↔ Customer ↔ 
 cd retail_system
 
 # Start all containers
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
-This will start:
-- PostgreSQL database (5432)
-- **RabbitMQ** (5672, 15672)
+This starts:
+- PostgreSQL database (local port **5433** → docker **5432**)
+- **RabbitMQ** (5672, Management UI: **15672**)
 - **Order Service** (8090)
-- **3x Warehouse Instances** (8081, 8091, 8101)
-- **3x Retailer Instances** (8082, 8092, 8102)
-- Customer service (8083)
+- **3× Warehouse Instances** (8081, 8091, 8101)
+- **3× Retailer Instances** (8082, 8092, 8102)
+- Customer Service (8083)
 - React UI (3000)
 
 ### Stop All Services
 
 ```bash
 # Stop containers
-docker-compose down
+docker compose down
 
 # Stop and clear database (fresh start)
-docker-compose down -v
+docker compose down -v
 ```
 
 ### View Logs
 
 ```bash
 # All services
-docker-compose logs -f
+docker compose logs -f
 
 # Specific service
-docker-compose logs -f order-service
-docker-compose logs -f warehouse1
-docker-compose logs -f retailer1
-docker-compose logs -f rabbitmq
+docker compose logs -f order-service
+docker compose logs -f warehouse1
+docker compose logs -f retailer1
+docker compose logs -f rabbitmq
 ```
 
 ---
@@ -253,26 +282,14 @@ docker-compose logs -f rabbitmq
 #### Get Single Item
 **GET** `/api/warehouse/{id}`
 
-#### Sell Item (Manual/Internal)
-**POST** `/api/warehouse/buy?retailerId={rid}&itemId={id}&quantity={qty}`
-
 #### Update Item
 **PUT** `/api/warehouse/{id}`
-```json
-{
-  "productName": "Gaming Laptop",
-  "price": 1299.99,
-  "stockOnHand": 100
-}
-```
 
-#### 🆕 Get Warehouse Inventory History
+#### Get Warehouse Inventory History
 **GET** `/api/warehouse/history`
-*Returns all inventory movements (ADDED, SOLD, ADJUSTED) for the warehouse, sorted by most recent*
 
-#### 🆕 Get Product History
+#### Get Product History
 **GET** `/api/warehouse/history/product/{productId}`
-*Returns history for a specific product across all transaction types*
 
 ---
 
@@ -287,16 +304,22 @@ docker-compose logs -f rabbitmq
   "retailerId": 1
 }
 ```
-*Note: Automatically finds and calls the warehouse with the highest stock.*
+*Automatically routes to the warehouse with the highest stock.*
 
 #### View Inventory Cache
 **GET** `/api/order-service/inventory`
+
+#### View All Orders
+**GET** `/api/order-service/orders`
+
+#### View Specific Order
+**GET** `/api/order-service/orders/{orderId}`
 
 ---
 
 ### Retailer Service (http://localhost:8082)
 
-#### Buy from Warehouse
+#### Buy from Warehouse (Async)
 **POST** `/api/retailer/buy`
 ```json
 {
@@ -304,53 +327,31 @@ docker-compose logs -f rabbitmq
   "quantity": 10
 }
 ```
-*Note: Auto-merges if product already exists in retailer inventory*
 
-#### Get All Products
-**GET** `/api/retailer/all`
+#### Track Order Status
+**GET** `/api/retailer/track/{orderId}`
+*Returns: `id`, `orderId`, `status`, `placedAt`, `updatedAt`*
 
-#### Get Single Product
-**GET** `/api/retailer/{id}`
+#### Track All Orders
+**GET** `/api/retailer/track/all`
 
-#### Place Order (from customer)
-**POST** `/api/retailer/orders?productId={id}&quantity={qty}&customerName={name}`
-
-#### Update Purchase
-**PUT** `/api/retailer/{id}`
-```json
-{
-  "warehouseItemId": 1,
-  "productName": "Laptop",
-  "price": 999.99,
-  "quantity": 20
-}
-```
-
-#### 🆕 Get Current Inventory (with avg prices)
+#### Get Current Inventory (with avg prices)
 **GET** `/api/retailer/inventory`
-*Shows current stock + weighted average purchase price per product*
 
-#### 🆕 Get Specific Product Inventory
+#### Get Specific Product Inventory
 **GET** `/api/retailer/inventory/product/{productId}`
 
-#### 🆕 Get Purchase History
+#### Get Purchase History
 **GET** `/api/retailer/purchases`
-*All purchases made from warehouses*
 
-#### 🆕 Get Sales History
+#### Get Sales History
 **GET** `/api/retailer/sales`
-*All sales made to customers*
 
-#### 🆕 Get Specific Sale
-**GET** `/api/retailer/sales/{id}`
-
-#### 🆕 Get Full Inventory Audit Trail
+#### Get Full Inventory Audit Trail
 **GET** `/api/retailer/inventory/history`
-*Complete log of all stock changes (PURCHASED, SOLD) with stockBefore/stockAfter snapshots*
 
-#### 🆕 Get Product-Specific History
-**GET** `/api/retailer/inventory/history/product/{productId}`
-*History filtered for a single product*
+#### Sell to Customer (applies 15% markup)
+**POST** `/api/retailer/orders?productId={id}&quantity={qty}&customerName={name}`
 
 ---
 
@@ -372,97 +373,78 @@ docker-compose logs -f rabbitmq
 #### Get All Orders
 **GET** `/api/customer/all`
 
-#### Get Single Order
-**GET** `/api/customer/{id}`
-
----
-
-## ✨ Features
-
-### Centralized Routing
-- **Order Service** acts as a smart gateway
-- Automatically selects warehouses based on stock availability
-- Provides high availability and failure fallback
-
-### Event-Driven Sync
-- Uses **RabbitMQ** for real-time stock synchronization
-- Decouples warehouses from the central routing layer
-- Ensures inventory cache is always up-to-date (milliseconds latency)
-
-### Multi-Instance Scaling
-- Supports multiple Retailer and Warehouse instances out of the box
-- Configuration-driven scaling via `docker-compose.yml`
-- Resilient design: if one warehouse fails, others are automatically used
-
-### Auto-Merge Logic
-- Prevent duplicate product entries across the chain
-- Intelligent quantity merging on purchase/creation
-
-### 🆕 Comprehensive Inventory History Tracking
-- **Warehouse History** (`warehouse_inventory_history`):
-  - Tracks **ADDED** (new/restocked), **SOLD** (to retailer), **ADJUSTED** (manual edit) transactions
-  - Records which **retailer** purchased items (via `retailerId` field)
-  - Captures `stockBefore` → `stockAfter` snapshots for every change
-- **Retailer History** (`retailer_inventory_history`):
-  - Tracks **PURCHASED** (from warehouse) and **SOLD** (to customer) transactions
-  - **Links to source records** via `referenceId` (maps to `purchase.id` or `sale.id`)
-  - Records `priceAtTransaction` for cost tracking
-- **Weighted Average Pricing**: Retailer inventory automatically calculates weighted average purchase price when buying from multiple warehouses at different prices
-- **Automatic 20% Markup**: Retailer selling price is auto-calculated as `averagePurchasePrice × 1.2`
-- **Timestamped & Noted**: Every history entry includes `transactionDate` and optional `notes` field (e.g., "Sold to Retailer 2", "Initial stock")
-
 ---
 
 ## 🧪 Testing the Complete Flow
 
-### 1. Add products to warehouse
+### 1. Seed warehouse stock
 ```bash
-POST http://localhost:8081/api/warehouse/create
+curl -X POST http://localhost:8081/api/warehouse/create \
+     -H "Content-Type: application/json" \
+     -d '{"productName": "Laptop", "price": 1000.0, "stockOnHand": 50}'
 ```
 
-### 2. Retailer purchases from warehouse
+### 2. Verify Order Service cache is updated
 ```bash
-POST http://localhost:8082/api/retailer/buy
+curl http://localhost:8090/api/order-service/inventory
 ```
 
-### 3. Customer views products
+### 3. Retailer buys stock (async flow begins)
 ```bash
-GET http://localhost:8083/api/customer/products
+curl -X POST http://localhost:8082/api/retailer/buy \
+     -H "Content-Type: application/json" \
+     -d '{"itemId": 1, "quantity": 5}'
+```
+> Copy the `orderId` from the response.
+
+### 4. Track the order status
+```bash
+curl http://localhost:8082/api/retailer/track/{orderId}
+# Status moves: ACCEPTED → ROUTED → COMPLETED
 ```
 
-### 4. Customer places order
+### 5. Check retailer inventory (stock arrived!)
 ```bash
-POST http://localhost:8083/api/customer/orders
+curl http://localhost:8082/api/retailer/inventory
 ```
 
-### 5. Verify stock and history
+### 6. Sell to a customer (15% profit)
 ```bash
-# Check warehouse stock
-GET http://localhost:8081/api/warehouse/all
+curl -X POST "http://localhost:8082/api/retailer/orders?productId=1&quantity=1&customerName=Alice"
+# Laptop bought at $1000 → Sold at $1150
+```
 
-# 🆕 Check warehouse history (see ADDED and SOLD records)
-GET http://localhost:8081/api/warehouse/history
+### 🔬 Resilience Test (Forces RabbitMQ queuing)
+```bash
+# Stop ALL warehouses to force queuing
+docker stop retail_warehouse1 retail_warehouse2 retail_warehouse3
 
-# Check retailer stock (with average prices)
-GET http://localhost:8082/api/retailer/inventory
+# Place order — message waits in RabbitMQ queue
+curl -X POST http://localhost:8082/api/retailer/buy \
+     -H "Content-Type: application/json" \
+     -d '{"itemId": 1, "quantity": 2}'
 
-# 🆕 Check retailer history (see PURCHASED and SOLD records)
-GET http://localhost:8082/api/retailer/inventory/history
+# Check RabbitMQ UI: http://localhost:15672
+# Go to Queues → order.routed.warehouse.* → see 1 message "Ready"
 
-# Check customer orders
-GET http://localhost:8083/api/customer/all
+# Restart warehouses — message is consumed instantly
+docker start retail_warehouse1 retail_warehouse2 retail_warehouse3
 ```
 
 ---
 
-## 🌐 Web UI
+## ✨ Key Features
 
-Access the customer interface at: **http://localhost:3000**
-
-1. Enter your name to login
-2. Browse available products
-3. Select quantity and place orders
-4. Orders are saved and visible via API
+| Feature | Description |
+|---------|-------------|
+| **Async Order Routing** | Orders flow via RabbitMQ, never blocking the Retailer |
+| **Auto Cache Sync** | Warehouses broadcast stock on startup and on every change |
+| **Load Balancing** | Order Service picks the warehouse with most stock |
+| **Resilient Messaging** | Durable queues hold messages if a warehouse is offline |
+| **15% Profit Margin** | Retailer selling price = `averagePurchasePrice × 1.15` |
+| **Weighted Avg Price** | Retailer calculates average cost across multiple warehouse buys |
+| **Full Audit Trail** | Every stock movement recorded with before/after snapshots |
+| **Order Tracking** | Track orders from `ACCEPTED` → `ROUTED` → `COMPLETED` |
 
 ---
 
@@ -480,33 +462,41 @@ Access the customer interface at: **http://localhost:3000**
 
 ```
 retail_system/
-├── warehouse/          # Warehouse microservice template
-├── order-service/  # Routing and caching service
-├── retailer/           # Retailer microservice template
+├── warehouse/          # Warehouse microservice
+├── order-service/      # Async routing & caching service
+├── retailer/           # Retailer microservice
 ├── customer/           # Customer service
 ├── customer-ui/        # React frontend
 ├── docker-compose.yml  # Multi-service orchestration
-└── README.md          # Project documentation
+└── README.md           # Project documentation
 ```
 
 ---
 
 ## 🔧 Configuration
 
-### Database Connection
-All services connect to PostgreSQL using environment variables set in `docker-compose.yml`:
-- `SPRING_DATASOURCE_URL`
-- `SPRING_DATASOURCE_USERNAME`
-- `SPRING_DATASOURCE_PASSWORD`
+### Service Ports
+| Service | External Port |
+|---------|--------------|
+| Warehouse 1 | 8081 |
+| Warehouse 2 | 8091 |
+| Warehouse 3 | 8101 |
+| Order Service | 8090 |
+| Retailer 1 | 8082 |
+| Retailer 2 | 8092 |
+| Retailer 3 | 8102 |
+| Customer | 8083 |
+| Customer UI | 3000 |
+| RabbitMQ (AMQP) | 5672 |
+| RabbitMQ (UI) | 15672 |
+| PostgreSQL | **5433** (→ 5432 inside Docker) |
 
-> ⚠️ **Note**: The credentials in `docker-compose.yml` are for development only. Change them for production use.
-
-### Service Discovery
-Services communicate using internal Docker network aliases:
+### Internal Docker Hostnames
 - Retailer → Order Service: `http://order-service:8084`
-- Order Service → Warehouse 1: `http://warehouse1:8081`
+- Order Service → Warehouses: `http://warehouse1:8081`, `http://warehouse2:8091`, etc.
 - Customer → Retailer 1: `http://retailer1:8082`
 - All Services → RabbitMQ: `amqp://rabbitmq:5672`
+- All Services → PostgreSQL: `jdbc:postgresql://postgres:5432/retail_system`
 
 ---
 
@@ -514,9 +504,9 @@ Services communicate using internal Docker network aliases:
 
 - First run may take longer as Docker downloads images and builds containers
 - Database persists data in Docker volume `retail_system_postgres_data`
-- Services restart automatically on failure
+- Services restart automatically on failure (`restart: on-failure`)
+- **History tables are auto-created by JPA/Hibernate** (`ddl-auto: update` in Spring config)
 - Auto-merge prevents duplicate product entries
-- **History tables are auto-created by JPA/Hibernate** (`ddl-auto` in Spring config)
 
 ---
 
