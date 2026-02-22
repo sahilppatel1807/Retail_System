@@ -1,3 +1,4 @@
 CREATE SCHEMA IF NOT EXISTS customer_schema;
 CREATE SCHEMA IF NOT EXISTS retailer_schema;
 CREATE SCHEMA IF NOT EXISTS warehouse_schema;
+CREATE SCHEMA IF NOT EXISTS order_service_schema;

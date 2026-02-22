@@ -12,7 +12,7 @@ public class WarehouseClient {
 
     private final RestClient restClient;
 
-    @Value("${warehouse.central.host:warehouse-central}")
+    @Value("${warehouse.central.host:order-service}")
     private String warehouseCentralHost;
 
     @Value("${warehouse.central.port:8084}")
@@ -22,7 +22,7 @@ public class WarehouseClient {
         this.restClient = RestClient.builder().build();
     }
 
-    // Buy from warehouse-central (it handles routing to actual warehouses)
+    // Buy from order-service (it handles routing to actual warehouses)
     public ItemResponse buyFromWarehouse(Long retailerId, Long itemId, int quantity) {
         WarehousePurchaseRequest request = new WarehousePurchaseRequest();
         request.setRetailerId(retailerId);
@@ -30,7 +30,7 @@ public class WarehouseClient {
         request.setQuantity(quantity);
 
         return restClient.post()
-                .uri("http://" + warehouseCentralHost + ":" + warehouseCentralPort + "/api/warehouse-central/purchase")
+                .uri("http://" + warehouseCentralHost + ":" + warehouseCentralPort + "/api/order-service/purchase")
                 .body(request)
                 .retrieve()
                 .body(ItemResponse.class);

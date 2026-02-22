@@ -2,6 +2,8 @@
 
 A complete retail inventory management system demonstrating microservices architecture with Spring Boot and React.
 
+postgres changed to 5432:5432 to 5433:5432 so it will connect the local 5433 to docker's 5432
+
 ## 📋 Table of Contents
 - [System Overview](#system-overview)
 - [Services](#services)
@@ -17,11 +19,11 @@ A complete retail inventory management system demonstrating microservices archit
 This is a resilient, multi-instance microservices system that simulates a complex retail supply chain:
 
 ```
-Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer ↔ Customer UI
+Warehouses (1, 2, 3) ↔ Order Service ↔ Retailers (1, 2, 3) ↔ Customer ↔ Customer UI
 ```
 
 - **Warehouse Instances**: Multiple warehouses managing local inventory and **full inventory movement history**
-- **Warehouse Central**: Intelligent router and cache that connects retailers to available warehouses
+- **Order Service**: Intelligent router and cache that connects retailers to available warehouses
 - **Retailer Instances**: Multiple retailers with independent inventory, **purchase/sale history, and audit trails**
 - **Customer Service**: Handles customer interactions and order history
 - **Customer UI**: React-based frontend for end-users
@@ -37,7 +39,7 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
 
 **Responsibilities**:
 - Manage local stock with unique warehouse IDs (1, 2, 3)
-- Sell products to retailers via Warehouse Central
+- Sell products to retailers via Order Service
 - Broadcast stock changes via **RabbitMQ**
 - Auto-merge duplicate products by name
 - **Track every inventory movement** (ADDED, SOLD, ADJUSTED) in `warehouse_inventory_history` table
@@ -54,7 +56,7 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
 **Purpose**: Scalable retail layer between warehouses and customers
 
 **Responsibilities**:
-- Purchase from the most available warehouse via Warehouse Central
+- Purchase from the most available warehouse via Order Service
 - Maintain independent retailer inventory (Ids: 1, 2, 3)
 - Record sales transactions and customer orders
 - Auto-merge duplicate purchases
@@ -68,7 +70,7 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
 
 ---
 
-### 3. Warehouse Central (Port 8090)
+### 3. Order Service (Port 8090)
 
 **Purpose**: Intelligent routing and inventory caching layer
 
@@ -80,7 +82,7 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
 
 **Technology**: Spring Boot, RabbitMQ (Consumer), In-Memory Cache
 
-**Directory**: `/warehouse-central`
+**Directory**: `/order-service`
 
 ---
 
@@ -136,7 +138,7 @@ Warehouses (1, 2, 3) ↔ Warehouse Central ↔ Retailers (1, 2, 3) ↔ Customer 
                    └───────────┐         │         ┌───────────┘
                                ▼         ▼         ▼
                        ┌────────────────────────────────┐
-                       │       Warehouse Central        │
+                       │       Order Service        │
                        │     (Routing & Inventory)      │◀─────┐
                        │          (Port 8090)           │      │
                        └───────────────┬────────────────┘      │
@@ -199,7 +201,7 @@ docker-compose up --build -d
 This will start:
 - PostgreSQL database (5432)
 - **RabbitMQ** (5672, 15672)
-- **Warehouse Central** (8090)
+- **Order Service** (8090)
 - **3x Warehouse Instances** (8081, 8091, 8101)
 - **3x Retailer Instances** (8082, 8092, 8102)
 - Customer service (8083)
@@ -222,7 +224,7 @@ docker-compose down -v
 docker-compose logs -f
 
 # Specific service
-docker-compose logs -f warehouse-central
+docker-compose logs -f order-service
 docker-compose logs -f warehouse1
 docker-compose logs -f retailer1
 docker-compose logs -f rabbitmq
@@ -274,10 +276,10 @@ docker-compose logs -f rabbitmq
 
 ---
 
-### Warehouse Central (http://localhost:8090)
+### Order Service (http://localhost:8090)
 
 #### Route Purchase
-**POST** `/api/warehouse-central/purchase`
+**POST** `/api/order-service/purchase`
 ```json
 {
   "productId": 1,
@@ -288,7 +290,7 @@ docker-compose logs -f rabbitmq
 *Note: Automatically finds and calls the warehouse with the highest stock.*
 
 #### View Inventory Cache
-**GET** `/api/warehouse-central/inventory`
+**GET** `/api/order-service/inventory`
 
 ---
 
@@ -378,7 +380,7 @@ docker-compose logs -f rabbitmq
 ## ✨ Features
 
 ### Centralized Routing
-- **Warehouse Central** acts as a smart gateway
+- **Order Service** acts as a smart gateway
 - Automatically selects warehouses based on stock availability
 - Provides high availability and failure fallback
 
@@ -479,7 +481,7 @@ Access the customer interface at: **http://localhost:3000**
 ```
 retail_system/
 ├── warehouse/          # Warehouse microservice template
-├── warehouse-central/  # Routing and caching service
+├── order-service/  # Routing and caching service
 ├── retailer/           # Retailer microservice template
 ├── customer/           # Customer service
 ├── customer-ui/        # React frontend
@@ -501,8 +503,8 @@ All services connect to PostgreSQL using environment variables set in `docker-co
 
 ### Service Discovery
 Services communicate using internal Docker network aliases:
-- Retailer → Warehouse Central: `http://warehouse-central:8084`
-- Warehouse Central → Warehouse 1: `http://warehouse1:8081`
+- Retailer → Order Service: `http://order-service:8084`
+- Order Service → Warehouse 1: `http://warehouse1:8081`
 - Customer → Retailer 1: `http://retailer1:8082`
 - All Services → RabbitMQ: `amqp://rabbitmq:5672`
 
