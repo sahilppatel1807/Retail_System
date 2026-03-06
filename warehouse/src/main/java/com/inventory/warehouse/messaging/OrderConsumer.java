@@ -1,14 +1,17 @@
 package com.inventory.warehouse.messaging;
 
+import java.time.LocalDateTime;
+import java.util.Map;
+
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.inventory.warehouse.dto.OrderUpdateDTO;
+import com.inventory.warehouse.entity.PendingOrder;
+import com.inventory.warehouse.repository.PendingOrderRepository;
 import com.inventory.warehouse.service.ItemService;
 
 import lombok.extern.slf4j.Slf4j;
-import java.util.Map;
 
 @Service
 @Slf4j
@@ -16,13 +19,15 @@ public class OrderConsumer {
 
     private final ItemService itemService;
     private final StatusUpdateProducer statusUpdateProducer;
+    private final PendingOrderRepository pendingOrderRepository;
 
     @Value("${warehouse.id:1}")
     private Long warehouseId;
 
-    public OrderConsumer(ItemService itemService, StatusUpdateProducer statusUpdateProducer) {
+    public OrderConsumer(ItemService itemService, StatusUpdateProducer statusUpdateProducer, PendingOrderRepository pendingOrderRepository) {
         this.itemService = itemService;
         this.statusUpdateProducer = statusUpdateProducer;
+        this.pendingOrderRepository = pendingOrderRepository;
     }
 
     @RabbitListener(queues = "order.routed.warehouse.${warehouse.id:1}")
@@ -32,20 +37,20 @@ public class OrderConsumer {
         int quantity = (int) orderData.get("quantity");
         Long retailerId = Long.valueOf(orderData.get("retailerId").toString());
 
-        log.info("📦 Warehouse {} received order {} for product {}", warehouseId, orderId, productId);
+        log.info("📦 Warehouse {} received order {}", warehouseId, orderId);
 
-        try {
-            // Process the sale
-            com.inventory.warehouse.entity.Item item = itemService.sellItem(retailerId, productId, quantity);
-            
-            // Send success status update
-            statusUpdateProducer.sendStatusUpdate(new OrderUpdateDTO(orderId, "COMPLETED", "Order processed successfully by warehouse " + warehouseId, item.getPrice()));
-            log.info("✅ Order {} completed by warehouse {}", orderId, warehouseId);
-            
-        } catch (Exception e) {
-            log.error("❌ Failed to process order {}: {}", orderId, e.getMessage());
-            // Send failed status update
-            statusUpdateProducer.sendStatusUpdate(new OrderUpdateDTO(orderId, "FAILED", e.getMessage(), 0.0f));
-        }
+        // SAVE TO DATABASE instead of processing immediately
+        PendingOrder pendingOrder = new PendingOrder();
+        pendingOrder.setOrderId(orderId);
+        pendingOrder.setProductId(productId);
+        pendingOrder.setProductName("Product-" + productId); // Or fetch from item table
+        pendingOrder.setQuantity(quantity);
+        pendingOrder.setRetailerId(retailerId);
+        pendingOrder.setWarehouseId(warehouseId);
+        pendingOrder.setReceivedAt(LocalDateTime.now());
+        
+        pendingOrderRepository.save(pendingOrder);
+        
+        log.info("✅ Order {} saved to pending orders", orderId);
     }
 }

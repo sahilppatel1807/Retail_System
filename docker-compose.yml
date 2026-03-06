@@ -4,7 +4,7 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: retail_postgres
+    container_name: postgres
     environment:
       POSTGRES_DB: retail_system
       POSTGRES_USER: sahil
@@ -23,7 +23,7 @@ services:
 
   order-service:
     build: ./order-service
-    container_name: retail_order_service
+    container_name: order_service
     ports:
       - "8090:8084"
     environment:
@@ -50,7 +50,7 @@ services:
   # Warehouse Service 1
   warehouse1:
     build: ./warehouse
-    container_name: retail_warehouse1
+    container_name: warehouse1
     ports:
       - "8081:8081"
     environment:
@@ -74,7 +74,7 @@ services:
   # Warehouse Service 2
   warehouse2:
     build: ./warehouse
-    container_name: retail_warehouse2
+    container_name: warehouse2
     ports:
       - "8091:8091"
     environment:
@@ -98,7 +98,7 @@ services:
   # Warehouse Service 3
   warehouse3:
     build: ./warehouse
-    container_name: retail_warehouse3
+    container_name: warehouse3
     ports:
       - "8101:8101"
     environment:
@@ -122,7 +122,7 @@ services:
   # Retailer Service 1
   retailer1:
     build: ./retailer
-    container_name: retail_retailer1
+    container_name: retailer1
     ports:
       - "8082:8082"
     environment:
@@ -150,7 +150,7 @@ services:
   # Retailer Service 2
   retailer2:
     build: ./retailer
-    container_name: retail_retailer2
+    container_name: retailer2
     ports:
       - "8092:8092"
     environment:
@@ -178,7 +178,7 @@ services:
   # Retailer Service 3
   retailer3:
     build: ./retailer
-    container_name: retail_retailer3
+    container_name: retailer3
     ports:
       - "8102:8102"
     environment:
@@ -206,7 +206,7 @@ services:
   # Customer Service
   customer:
     build: ./customer
-    container_name: retail_customer
+    container_name: customer
     ports:
       - "8083:8083"
     environment:
@@ -224,7 +224,7 @@ services:
   # React Customer UI
   customer-ui:
     build: ./customer-ui
-    container_name: retail_ui
+    container_name: customer_ui
     ports:
       - "3000:3000"
     environment:
@@ -234,9 +234,31 @@ services:
     stdin_open: true
     tty: true
 
+  warehouse-ui:
+    build: ./warehouse-ui
+    container_name: warehouse_ui
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_WAREHOUSE1_URL=http://localhost:8081
+      - REACT_APP_WAREHOUSE2_URL=http://localhost:8091
+      - REACT_APP_WAREHOUSE3_URL=http://localhost:8101
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      warehouse1:
+        condition: service_started
+      warehouse2:
+        condition: service_started
+      warehouse3:
+        condition: service_started
+    restart: on-failure
+
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: retail_rabbitmq
+    container_name: rabbitmq
     ports:
       - "5672:5672"    # AMQP port (for applications)
       - "15672:15672"  # Management UI port

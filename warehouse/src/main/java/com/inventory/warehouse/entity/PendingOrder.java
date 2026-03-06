@@ -1,8 +1,8 @@
 package com.inventory.warehouse.entity;
 
+import java.time.LocalDateTime;
 
-import org.springframework.beans.factory.annotation.Value;
-
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -12,20 +12,25 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-
 @Entity
-@Table(name = "item")
+@Table(name = "pending_orders")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Item {
+public class PendingOrder {
+    
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
+    
+    @Column(unique = true)
+    private String orderId;
+    
+    private Long productId;
+    private String productName;
+    private int quantity;
+    private Long retailerId;
     private Long warehouseId;
     
-    private String productName;
-    private float price;
-    private int stockOnHand;
+    private LocalDateTime receivedAt;
 }
