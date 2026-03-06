@@ -10,4 +10,5 @@ import com.inventory.warehouse.entity.Item;
 @Repository
 public interface ItemRepository extends JpaRepository<Item,Long> {
     Optional<Item> findByProductName(String productName);
+    Iterable<Item> findItemsByWarehouseId(Long warehouseId);
 }

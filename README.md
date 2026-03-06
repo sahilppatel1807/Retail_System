@@ -112,77 +112,90 @@ Warehouses (1, 2, 3) ↔ [RabbitMQ] ↔ Order Service ↔ [RabbitMQ] ↔ Retaile
 
 ---
 
+### 6. Warehouse UI (Port 3001)
+
+**Purpose**: React web interface for warehouse management
+
+**Responsibilities**:
+- Monitor inventory levels across all 3 warehouses
+- Add or update stock directly in multiple locations
+- View real-time aggregated inventory data
+
+**Technology**: React.js, TailwindCSS
+
+**Directory**: `/warehouse-ui`
+
+---
+
 ## 🏗️ Architecture
 
-### Service Communication & Queue Flow
+### 1. System Service Workflow (REST & High-Level Architecture)
 
 ```text
-                              ┌───────────────┐
-                              │  Customer UI  │
-                              │  (Port 3000)  │
-                              └───────┬───────┘
-                                      │ REST
-                                      ▼
-                              ┌───────────────┐
-                              │  Customer Svc │
-                              │  (Port 8083)  │
-                              └───────┬───────┘
-                                      │ REST
-                ┌─────────────────────┼─────────────────────┐
-                ▼                     ▼                     ▼
-        ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+                               ┌───────────────┐      ┌───────────────┐
+                               │  Customer UI  │      │ Warehouse UI  │
+                               │  (Port 3000)  │      │  (Port 3001)  │
+                               └───────┬───────┘      └───────┬───────┘
+                                       │ REST                 │ REST
+                                       ▼                      │
+                               ┌───────────────┐              │
+                               │  Customer Svc │              │
+                               │  (Port 8083)  │              │
+                               └───────┬───────┘              │
+                                       │ REST                 │
+                ┌─────────────────────┼─────────────────────┐ │
+                ▼                     ▼                     ▼ │
+        ┌───────────────┐     ┌───────────────┐     ┌─────────┴─────┐
         │  Retailer 1   │     │  Retailer 2   │     │  Retailer 3   │
         │  [Inv History]│     │  [Inv History]│     │  [Inv History]│
         │  (Port 8082)  │     │  (Port 8092)  │     │  (Port 8102)  │
         └───────┬───────┘     └───────┬───────┘     └───────┬───────┘
                 │           HTTP POST /purchase (REST)       │
                 └──────────────────┬────────────────────────┘
-                                   ▼
-                       ┌───────────────────────┐
-                       │     Order Service     │
-                       │     (Port 8090)       │◀─────────────────┐
-                       │  [In-Memory Cache]    │                  │ AMQP
-                       └───────────────────────┘            (stock.updates.queue)
-                         │ Publishes to                          │
-                         │ order.accepted.queue                  │
-                         ▼                                       │
-              ┌──────────────────────────────────────────────────┴───┐
-              │                      RabbitMQ                        │
-              │                                                       │
-              │  ┌─────────────────────────────────────────────┐     │
-              │  │           order.accepted.queue              │     │
-              │  │     (Consumed by OrderRouterService)        │     │
-              │  └──────────────────┬──────────────────────────┘     │
-              │                     │ Routes to best warehouse        │
-              │  ┌──────────────────▼──────────────────────────┐     │
-              │  │       order.routed.warehouse.1              │     │
-              │  │       order.routed.warehouse.2              │     │
-              │  │       order.routed.warehouse.3              │     │
-              │  └──────────────────┬──────────────────────────┘     │
-              │                     │ Consumed by Warehouse           │
-              │  ┌──────────────────▼──────────────────────────┐     │
-              │  │           status.update.queue               │     │
-              │  │   Warehouse → Order Service (COMPLETED)     │     │
-              │  └──────────────────┬──────────────────────────┘     │
-              │                     │ Forwarded to Retailer           │
-              │  ┌──────────────────▼──────────────────────────┐     │
-              │  │       retailer.status.{retailerId}          │     │
-              │  │   Order Service → Retailer (final notify)   │     │
-              │  └─────────────────────────────────────────────┘     │
-              └───────────────────────────────────────────────────────┘
-                              │ Consumed by:
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-      ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-      │  Warehouse 1  │ │  Warehouse 2  │ │  Warehouse 3  │
-      │  [Inv History]│ │  [Inv History]│ │  [Inv History]│
-      │  (Port 8081)  │ │  (Port 8091)  │ │  (Port 8101)  │
-      └───────────────┘ └───────────────┘ └───────────────┘
-
-      ┌──────────────────────────────────────────────────────────────┐
+                                   │                          ▲
+                                   ▼                          │ REST
+                       ┌───────────────────────┐              │
+                       │     Order Service     │              │
+                       │   (RabbitMQ Routing)  │              │
+                       └───────────┬───────────┘              │
+                                   │                          │
+              ┌────────────────────┼────────────────────┐     │
+              ▼                    ▼                    ▼     │
+      ┌───────────────┐    ┌───────────────┐    ┌─────────────┴─┐
+      │  Warehouse 1  │    │  Warehouse 2  │    │  Warehouse 3  │
+      │  [Inv History]│    │  [Inv History]│    │  [Inv History]│
+      │  (Port 8081)  │    │  (Port 8091)  │    │  (Port 8101)  │
+      └───────┬───────┘    └───────┬───────┘    └───────┬───────┘
+              │                    │                    │
+      ┌───────┴────────────────────┴────────────────────┴────────────┐
       │                        PostgreSQL                            │
       │   warehouse_schema  │  retailer_schema  │  order_svc_schema  │
       └──────────────────────────────────────────────────────────────┘
+```
+
+### 2. Asynchronous Event Flow (RabbitMQ)
+
+```text
+  ┌───────────────┐             POST /purchase              ┌───────────────┐
+  │   Retailer    ├────────────────────────────────────────▶│ Order Service │
+  │ (Wants Stock) │                                         │ [Cache Sync]  │
+  └───────▲───────┘                                         └───────┬───────┘
+          │                                                         │
+          │                                                  [order.accepted.queue]
+ [retailer.status.{id}]                                             │
+          │                                                         ▼
+  ┌───────┴─────────────────────────────────────────────────────────┴────────┐
+  │                               RabbitMQ                                   │
+  │                   (Exchanges, Queues, Routing Keys)                      │
+  └───────▲─────────────────────────────────────────────────────────┬────────┘
+          │                                                         │
+          │                                            [order.routed.warehouse.{N}]
+ [status.update.queue]                                              │
+          │                                                         ▼
+          │                                                 ┌───────────────┐
+  ┌───────┴───────┐   Update DB, Fulfill, Respond           │  Warehouse(s) │
+  │ Order Service │◀────────────────────────────────────────┤ (Best Stock)  │
+  └───────────────┘                                         └───────────────┘
 ```
 
 ### ⚡ Order Lifecycle Summary
@@ -235,6 +248,7 @@ This starts:
 - **3× Retailer Instances** (8082, 8092, 8102)
 - Customer Service (8083)
 - React UI (3000)
+- **Warehouse UI (3001)**
 
 ### Stop All Services
 
@@ -463,6 +477,7 @@ docker start retail_warehouse1 retail_warehouse2 retail_warehouse3
 ```
 retail_system/
 ├── warehouse/          # Warehouse microservice
+├── warehouse-ui/       # React frontend for warehouses
 ├── order-service/      # Async routing & caching service
 ├── retailer/           # Retailer microservice
 ├── customer/           # Customer service
@@ -487,6 +502,7 @@ retail_system/
 | Retailer 3 | 8102 |
 | Customer | 8083 |
 | Customer UI | 3000 |
+| Warehouse UI| 3001 |
 | RabbitMQ (AMQP) | 5672 |
 | RabbitMQ (UI) | 15672 |
 | PostgreSQL | **5433** (→ 5432 inside Docker) |
@@ -495,6 +511,7 @@ retail_system/
 - Retailer → Order Service: `http://order-service:8084`
 - Order Service → Warehouses: `http://warehouse1:8081`, `http://warehouse2:8091`, etc.
 - Customer → Retailer 1: `http://retailer1:8082`
+- Warehouse UI → Warehouses: `http://localhost:8081` (and `8091`, `8101`)
 - All Services → RabbitMQ: `amqp://rabbitmq:5672`
 - All Services → PostgreSQL: `jdbc:postgresql://postgres:5432/retail_system`
 

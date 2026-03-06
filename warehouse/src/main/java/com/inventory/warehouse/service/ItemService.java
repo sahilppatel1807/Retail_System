@@ -22,17 +22,19 @@ public class ItemService {
     private final ItemRepository repository;
     private final WarehouseInventoryHistoryRepository historyRepository;
     private final StockUpdateProducer stockUpdateProducer;
+    private final AuthService authService;
 
-    @Value("${warehouse.id:1}")
+    @Value("${warehouse.id}")
     private Long warehouseId;
 
     public ItemService(
             ItemRepository repository, 
             WarehouseInventoryHistoryRepository historyRepository,
-            StockUpdateProducer stockUpdateProducer) {
+            StockUpdateProducer stockUpdateProducer, AuthService authService) {
         this.repository = repository;
         this.historyRepository = historyRepository;
         this.stockUpdateProducer = stockUpdateProducer;
+        this.authService = authService;
     }
 
     /**
